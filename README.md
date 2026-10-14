@@ -13,7 +13,7 @@ Speech conveys both the words being spoken and information about the speaker's e
 
 We compare seven models, ranging from a simple reference baseline and classical machine learning methods to an artificial neural network and a convolutional neural network. The project follows a complete experimental workflow: loading and cleaning audio, exploring the dataset, extracting features, splitting and scaling data, training models, and evaluating predictions using **accuracy** and **macro F1**.
 
-A key objective is to examine how well the models generalise to different speakers. We compare a stratified group random split, where speakers can appear in both training and testing, with **Leave-One-Speaker-Out (LOSO)** evaluation, where the test speaker is excluded from training. The project also documents the learning progression from default model settings to planned feature and model optimisation, so that changes can be assessed against a consistent baseline.
+A key objective is to examine how well the models generalise to different speakers. We compare a stratified group random split, where speakers can appear in both training and testing, with **Leave-One-Speaker-Out (LOSO)** evaluation, where the test speaker is excluded from training. The project documents the progression from a predefined richer-feature baseline with default model settings to planned model optimisation, while retaining an MFCC-only reference for comparison.
 
 ## Models
 
@@ -27,7 +27,7 @@ A key objective is to examine how well the models generalise to different speake
 | Multilayer Perceptron (MLP) | Artificial neural network |
 | Convolutional Neural Network (CNN) | Neural network trained on log-mel spectrograms |
 
-The current notebook is an **untuned baseline**. The six scikit-learn classifiers retain their default constructor settings, including MLP's 200-iteration limit. The custom CNN uses two convolution layers, Adam, a batch size of 32, and 10 epochs. CUDA is selected automatically when available; the scikit-learn models run on CPU.
+The current notebook is an **untuned model baseline using predefined richer audio features**. The six scikit-learn classifiers retain their default constructor settings, including MLP's 200-iteration limit. The custom CNN uses two convolution layers, Adam, a batch size of 32, and 10 epochs. CUDA is selected automatically when available; the scikit-learn models run on CPU.
 
 ## Notebook Workflow
 
@@ -36,7 +36,7 @@ Open [MSI5001_SER.ipynb](MSI5001_SER.ipynb) and run its eight sections in order:
 1. **Install dependency & import library** — prepare the Python environment.
 2. **Load dataset** — read a local WAV directory or ZIP, or download a local copy from a public Google Drive link without mounting Drive.
 3. **Explore and clean dataset** — remove byte-identical duplicates and skip damaged, empty, invalid, or silent WAVs; inspect tables and graphs; listen to one randomly selected recording per emotion.
-4. **Data preprocessing** — convert audio to mono, resample to 16 kHz, and extract model inputs.
+4. **Data preprocessing** — convert audio to mono, resample to 16 kHz, and extract the richer acoustic baseline or the MFCC-only reference, plus CNN inputs.
 5. **Train test split (random & LOSO)** — prepare the evaluation splits.
 6. **Feature scaling** — fit scaling statistics separately on each split's training data and apply them to its training and test inputs.
 7. **Model training** — train fresh model instances for every split.
@@ -46,8 +46,24 @@ Open [MSI5001_SER.ipynb](MSI5001_SER.ipynb) and run its eight sections in order:
 
 | Models | Representation |
 | --- | --- |
-| Six scikit-learn models | 20 MFCC means + 20 MFCC standard deviations: **40 features per recording** |
+| Six scikit-learn models | **50 acoustic features per recording** by default; optional 40-feature MFCC-only reference |
 | CNN | **64 × 128 log-mel spectrogram**, with one input channel |
+
+The main baseline is selected with `FEATURE_SET = 'rich'` in section 4:
+
+| Feature family | Statistics | Count |
+| --- | --- | ---: |
+| MFCC | Mean and standard deviation of each of 20 coefficients | 40 |
+| Pitch (F0) | Mean and standard deviation over voiced frames | 2 |
+| RMS energy | Mean and standard deviation | 2 |
+| Spectral centroid | Mean and standard deviation | 2 |
+| Spectral bandwidth | Mean and standard deviation | 2 |
+| Spectral roll-off (85%) | Mean and standard deviation | 2 |
+| **Total** | | **50** |
+
+Pitch uses pYIN with a fixed 50–600 Hz analysis range. Unvoiced or non-finite pitch estimates are excluded; if no voiced pitch is detected, its two statistics are zero. All features are extracted independently per recording, with learned scaling fitted on training data only.
+
+Set `FEATURE_SET = 'mfcc'` to reproduce the earlier **40-feature MFCC-only reference**. Re-run sections 4–8 after changing the feature set. Both modes retain the same model settings, split definitions and CNN log-mel representation. The expanded features are a predefined baseline design, not a claim that they outperform MFCC alone.
 
 ## Evaluation
 
@@ -84,9 +100,9 @@ Drive downloads are copied to the runtime's local storage. Local CPU execution i
 
 These experiments are proposed next steps; they are **not implemented in the baseline notebook**. The suggested parameter values are starting search ranges, not established best settings.
 
-1. **Preserve the baseline.** Record its configuration, package versions, split definitions, accuracy, and macro F1 before changing features or parameters.
+1. **Preserve the richer baseline.** Run the default `FEATURE_SET = 'rich'` configuration and record its package versions, split definitions, accuracy, and macro F1. Keep the optional `FEATURE_SET = 'mfcc'` run as the earlier feature reference.
 2. **Add validation within the training data.** For the random protocol, use group-aware cross-validation inside its training portion. For each outer LOSO fold, tune using only the remaining speakers: with six speakers, the inner loop can train on four and validate on the fifth. Refit the selected configuration on all five outer training speakers before testing the sixth. Fit scaling and feature selection inside each inner training fold. Use validation macro F1 as the main selection metric and retain accuracy alongside it.
-3. **Test richer features.** Compare the 40-feature MFCC baseline with MFCC plus pitch, RMS energy, and selected spectral descriptors. Assess feature choices through the same inner validation procedure.
+3. **Keep features fixed during initial model tuning.** Use the predefined 50-feature baseline first so that parameter changes can be assessed separately. Investigate further feature selection or alternative feature sets later through the same inner validation procedure.
 4. **Tune the models.** Start with a small search, then refine around promising validation results.
 
 | Model | Suggested optimisation sequence |
