@@ -20,10 +20,10 @@ A key objective is to examine how well the models generalise to different speake
 | Model | Role |
 | --- | --- |
 | DummyClassifier | Reference baseline that ignores the input features |
-| Logistic Regression | Linear classifier |
 | K-Nearest Neighbours (KNN) | Distance-based classifier |
-| Support Vector Machine (SVM) | Nonlinear classifier using the default RBF kernel |
+| Logistic Regression | Linear classifier |
 | Random Forest | Ensemble of decision trees |
+| Support Vector Machine (SVM) | Nonlinear classifier using the default RBF kernel |
 | Multilayer Perceptron (MLP) | Artificial neural network |
 | Convolutional Neural Network (CNN) | Neural network trained on log-mel spectrograms |
 
@@ -92,10 +92,10 @@ These experiments are proposed next steps; they are **not implemented in the bas
 | Model | Suggested optimisation sequence |
 | --- | --- |
 | DummyClassifier | Keep unchanged as the reference baseline. |
-| Logistic Regression | Allow sufficient iterations for convergence, then test `C` values such as 0.01, 0.1, 1, 10, and 100. |
 | KNN | Test neighbour counts such as 3, 5, 7, 11, and 15; compare uniform versus distance weighting and Manhattan versus Euclidean distance. |
-| SVM | Compare linear and RBF kernels. For RBF, search `C` and `gamma` jointly, starting with `C` = 0.1, 1, 10, 100 and `gamma` = `scale`, 0.001, 0.01, 0.1. |
+| Logistic Regression | Allow sufficient iterations for convergence, then test `C` values such as 0.01, 0.1, 1, 10, and 100. |
 | Random Forest | Test tree depth and minimum leaf size before increasing tree count. Start with `max_depth` = None, 5, 10, 20; `min_samples_leaf` = 1, 2, 4; and 100–500 trees. |
+| SVM | Compare linear and RBF kernels. For RBF, search `C` and `gamma` jointly, starting with `C` = 0.1, 1, 10, 100 and `gamma` = `scale`, 0.001, 0.01, 0.1. |
 | MLP | Increase `max_iter` to 1500 to address convergence, then compare small hidden-layer layouts such as (64,), (128,), and (64, 32), followed by regularisation and learning rate. Retain explicit group-aware validation when selecting settings. |
 | CNN | First inspect training/validation loss and macro F1. Test learning rates and a longer epoch budget with validation-based early stopping. Then assess modest capacity changes, dropout/weight decay, and training-only time/frequency masking in separate experiments. Use speaker-separated validation for LOSO development. |
 
