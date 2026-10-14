@@ -13,7 +13,7 @@ Speech conveys both the words being spoken and information about the speaker's e
 
 We compare seven models, ranging from a simple reference baseline and classical machine learning methods to an artificial neural network and a convolutional neural network. The project follows a complete experimental workflow: loading and cleaning audio, exploring the dataset, extracting features, splitting and scaling data, training models, and evaluating predictions using **accuracy** and **macro F1**.
 
-A key objective is to examine how well the models generalise to different speakers. We compare a stratified group random split, where speakers can appear in both training and testing, with **Leave-One-Speaker-Out (LOSO)** evaluation, where the test speaker is excluded from training. The project documents the progression from a predefined richer-feature baseline with default model settings to planned model optimisation, with earlier feature baselines available in the Git history for comparison.
+A key objective is to examine how well the models generalise to different speakers. We compare a stratified group random split, where speakers can appear in both training and testing, with **Leave-One-Speaker-Out (LOSO)** evaluation, where the test speaker is excluded from training. The project documents the progression from a predefined richer-feature baseline with default model settings to validation-based model optimisation, with earlier feature baselines available in the Git history for comparison.
 
 ## Models
 
@@ -27,11 +27,11 @@ A key objective is to examine how well the models generalise to different speake
 | Multilayer Perceptron (MLP) | Artificial neural network |
 | Convolutional Neural Network (CNN) | Neural network trained on log-mel spectrograms |
 
-The current notebook is an **untuned model baseline using predefined richer audio features**. The six scikit-learn classifiers retain their default constructor settings, including MLP's 200-iteration limit. The custom CNN uses two convolution layers, Adam, a batch size of 32, and 10 epochs. CUDA is selected automatically when available; the scikit-learn models run on CPU.
+Sections 1–8 establish an **untuned model baseline using predefined audio features**. Section 9 implements validation-based hyperparameter tuning; section 10 compares baseline and optimised predictions. The six scikit-learn classifiers retain their default constructor settings, including MLP's 200-iteration limit. The custom CNN uses two convolution layers, Adam, a batch size of 32, and 10 epochs. CUDA is selected automatically when available; the scikit-learn models run on CPU.
 
 ## Notebook Workflow
 
-Open [MSI5001_SER.ipynb](MSI5001_SER.ipynb) and run its eight sections in order:
+Open [MSI5001_SER.ipynb](MSI5001_SER.ipynb) and run sections 1–10 in order:
 
 1. **Install dependency & import library** — prepare the Python environment.
 2. **Load dataset** — read a local WAV directory or ZIP, or download a local copy from a public Google Drive link without mounting Drive.
@@ -40,7 +40,17 @@ Open [MSI5001_SER.ipynb](MSI5001_SER.ipynb) and run its eight sections in order:
 5. **Train test split (random & LOSO)** — prepare the evaluation splits.
 6. **Feature scaling** — fit scaling statistics separately on each split's training data and apply them to its training and test inputs.
 7. **Model training** — train fresh model instances for every split.
-8. **Model prediction and evaluation** — display accuracy and macro F1 in a comparison table and charts.
+8. **Model prediction and evaluation** — display baseline accuracy and macro F1 in a comparison table and charts.
+9. **Model Optimisation & Hyperparameter Tuning** — preserve baseline results, set up inner validation, and tune each model:
+   - **9.1 Baseline results**
+   - **9.2 Optimisation method**
+   - **9.3 KNN optimisation**
+   - **9.4 Logistic Regression optimisation**
+   - **9.5 Random Forest optimisation**
+   - **9.6 SVM optimisation**
+   - **9.7 MLP optimisation**
+   - **9.8 CNN optimisation**
+10. **Final model prediction and evaluation** — compare both stages on the same outer test recordings, including score changes, per-speaker LOSO macro F1 and charts.
 
 ### Input Features
 
@@ -92,7 +102,7 @@ Jitter and shimmer are omitted because they require reliable vocal-cycle measure
 
 The four added feature groups contribute **38 features** (2 ZCR + 2 flatness + 20 delta MFCC + 14 contrast), bringing the previous 59-feature baseline to **97**. ZCR, flatness, delta MFCC and contrast are summarised over the whole recording, including quiet frames. Delta MFCCs use a fixed 9-frame first-order filter with nearest-edge padding, including for short clips. Contrast uses `n_bands=6`, which returns 7 bands. All these statistics are calculated independently for each recording.
 
-Re-run sections 4–8 after updating the notebook or changing `FEATURE_SET`, so features, scaling, models and results all match the selection. The model settings, split definitions and CNN log-mel representation are unchanged. The 40-feature MFCC-only reference is available through the selector; earlier 59-feature implementations remain in Git history. Adding features does not guarantee better accuracy or macro F1; learned scaling is fitted on training data only.
+Re-run sections 4–10 after updating the notebook or changing `FEATURE_SET`, so features, scaling, models and results all match the selection. The model settings, split definitions and CNN log-mel representation are unchanged. The 40-feature MFCC-only reference is available through the selector; earlier 59-feature implementations remain in Git history. Adding features does not guarantee better accuracy or macro F1; learned scaling is fitted on training data only.
 
 ## Evaluation
 
@@ -125,28 +135,51 @@ The notebook reports **pooled LOSO** scores: combine the held-out predictions fr
 
 Drive downloads are copied to the runtime's local storage. Local CPU execution is also supported.
 
-## Optimisation Roadmap — Planned Work
+## Model Optimisation & Hyperparameter Tuning
 
-These experiments are proposed next steps; they are **not implemented in the baseline notebook**. The suggested parameter values are starting search ranges, not established best settings.
+Section 9 implements a compact, reproducible search for the selected feature set. It preserves the default baseline and keeps the outer random and LOSO test recordings fixed. Candidate lists are starting search spaces, not established best settings or a guarantee of improvement. DummyClassifier remains unchanged.
 
-1. **Preserve the richer baseline.** Run `FEATURE_SET = 'rich'` (97 features) and record its package versions, split definitions, accuracy, and macro F1. Use `FEATURE_SET = 'mfcc'` for the 40-feature reference and earlier commits for the historical 59-feature baseline.
-2. **Add validation within the training data.** For the random protocol, use group-aware cross-validation inside its training portion. For each outer LOSO fold, tune using only the remaining speakers: with six speakers, the inner loop can train on four and validate on the fifth. Refit the selected configuration on all five outer training speakers before testing the sixth. Fit scaling and feature selection inside each inner training fold. Use validation macro F1 as the main selection metric and retain accuracy alongside it.
-3. **Keep features fixed during initial model tuning.** Use the predefined 97-feature baseline first so that parameter changes can be assessed separately. Investigate further feature selection or alternative feature sets later through the same inner validation procedure.
-4. **Tune the models.** Start with a small search, then refine around promising validation results.
+### Validation and model selection
 
-| Model | Suggested optimisation sequence |
-| --- | --- |
-| DummyClassifier | Keep unchanged as the reference baseline. |
-| KNN | Test neighbour counts such as 3, 5, 7, 11, and 15; compare uniform versus distance weighting and Manhattan versus Euclidean distance. |
-| Logistic Regression | Allow sufficient iterations for convergence, then test `C` values such as 0.01, 0.1, 1, 10, and 100. |
-| Random Forest | Test tree depth and minimum leaf size before increasing tree count. Start with `max_depth` = None, 5, 10, 20; `min_samples_leaf` = 1, 2, 4; and 100–500 trees. |
-| SVM | Compare linear and RBF kernels. For RBF, search `C` and `gamma` jointly, starting with `C` = 0.1, 1, 10, 100 and `gamma` = `scale`, 0.001, 0.01, 0.1. |
-| MLP | Increase `max_iter` to 1500 to address convergence, then compare small hidden-layer layouts such as (64,), (128,), and (64, 32), followed by regularisation and learning rate. Retain explicit group-aware validation when selecting settings. |
-| CNN | First inspect training/validation loss and macro F1. Test learning rates and a longer epoch budget with validation-based early stopping. Then assess modest capacity changes, dropout/weight decay, and training-only time/frequency masking in separate experiments. Use speaker-separated validation for LOSO development. |
+Every outer training split gets its own tuning run:
 
-5. **Track each change.** Keep an experiment table with the model, feature set, changed settings, validation metrics, and final outer-test metrics. Change one main component at a time when demonstrating the learning progression.
-6. **Check stability and speaker-level behaviour.** For stochastic models, repeat the fixed evaluation procedure with several predetermined training seeds. Report per-speaker LOSO metrics alongside pooled results to show whether improvements are consistent.
-7. **Compare baseline and optimised results.** Keep the same outer test splits and document any feature or training changes. Select parameters from training-data validation rather than from outer-test scores; nested evaluation measures the tuning procedure itself.
+| Outer protocol | Inner validation | Default run |
+| --- | --- | --- |
+| Random | Shuffled `StratifiedGroupKFold` within the outer training data, keeping alternate takes together | 3 inner folds |
+| LOSO | Hold out training speakers one at a time; the outer test speaker never enters tuning | 2 predetermined inner speaker holdouts per outer fold; set `INNER_LOSO_FOLDS = None` to use all 5 remaining speakers in AESDD |
+
+The same inner folds are used by the classical models and CNN. The compact default limits runtime; using all inner speaker holdouts provides broader validation coverage at higher cost. Settings are selected by **mean validation macro F1**, with validation accuracy retained alongside it. Each outer fold can select different settings.
+
+Classical searches use a `Pipeline(StandardScaler, model)` with raw acoustic features. Scaling is fitted within each inner training fold, then fitted again on all outer training recordings during the selected model's refit. CNN image mean/std are also computed separately from the appropriate inner training images. The outer-scaled arrays in section 6 are not used for tuning. Outer test scores never select hyperparameters, checkpoints or epoch counts.
+
+### Implemented searches
+
+| Subsection | Model | Compact search |
+| --- | --- | --- |
+| 9.3 | KNN | 3/5/11 neighbours × uniform/distance weights × Manhattan/Euclidean distance (12 candidates) |
+| 9.4 | Logistic Regression | Default C=1/max_iter=100 reference; C=0.1/1/10 with max_iter=1500 (4 candidates) |
+| 9.5 | Random Forest | Default tree settings, depth 10 with leaf size 2, unrestricted depth with leaf size 4, and 300 trees with leaf size 2 (4 candidates) |
+| 9.6 | SVM | RBF C=1/10 with gamma=scale; RBF C=10/100 with gamma=0.01; linear C=1/10 (6 candidates) |
+| 9.7 | MLP | Default 100-neuron/200-iteration reference; 100/64/128 neurons with max_iter=1500; (64,32) with alpha=0.001 and learning_rate_init=0.0003 (5 candidates) |
+| 9.8 | CNN | Original architecture with longer training; lower learning rate; 2×2 spatial pooling with dropout and weight decay (3 candidates) |
+
+Random Forest and MLP tuning use seed 42. MLP's internal random early stopping is disabled; its validation stays under the explicit group-aware procedure. Default-parameter references are included in the classical searches. Convergence warnings remain visible even with a higher iteration budget.
+
+CNN retains the original baseline in section 7. Tuning uses Adam, batch size 32, a maximum of 20 epochs and patience 4 by default. Validation macro F1 selects a copied best-epoch checkpoint inside each inner fold. The candidate with the highest mean best-epoch macro F1 is selected; ties use candidate order. Its median inner best epoch, rounded up, determines the number of epochs for a fresh refit on all outer training images. No outer test data are used for early stopping. Training and validation curves are shown for the selected random-protocol candidate's first inner fold. The spatial CNN and two-layer MLP candidates change multiple settings together; further ablations are needed to separate those settings' effects.
+
+### Running and reviewing optimisation
+
+1. Run sections 1–8 to establish the baseline.
+2. Choose the validation and compute settings in **9.2** before starting searches. `TUNING_JOBS = 1` is the default; CNN uses CUDA automatically when available.
+3. Run **9.3–9.8** in order. Each model shows its candidates, random-protocol validation scores and selected settings for every outer split. CNN adds validation curves.
+4. Run **10** after all models finish. It reports baseline/optimised accuracy and macro F1, accuracy changes in percentage points, macro F1 changes, per-speaker LOSO macro F1 and comparison charts. LOSO scores pool all held-out speaker predictions before calculating metrics.
+5. To compare `mfcc` and `rich`, run **4–10** separately for each selection and record both runs. The feature set is kept fixed within a tuning run.
+
+Re-running 9.2 clears previous tuning state, so re-run 9.3–10 afterwards. Full inner LOSO validation, MLP and CNN can take substantially longer than the untuned baseline, especially on CPU. The notebook is saved without outputs; results are generated when run locally or in Colab.
+
+### Further experiments
+
+After recording this compact search, refine promising validation ranges, test feature selection inside inner training folds, perform CNN augmentation/regularisation ablations, and repeat the predefined procedure with multiple training seeds. Keep the outer splits fixed and use inner validation to choose changes; retain negative outer-test changes in the report rather than discarding them.
 
 ## References
 
@@ -156,7 +189,11 @@ These experiments are proposed next steps; they are **not implemented in the bas
 - [Banse & Scherer (1996), Acoustic profiles in vocal emotion expression](https://doi.org/10.1037/0022-3514.70.3.614) — background for broad vocal-emotion tendencies, not evidence of the specific AESDD feature relationships proposed here.
 - [Scikit-learn model selection](https://scikit-learn.org/stable/model_selection.html)
 - [Nested versus non-nested cross-validation](https://scikit-learn.org/stable/auto_examples/model_selection/plot_nested_cross_validation_iris.html)
+- [GridSearchCV](https://scikit-learn.org/stable/modules/generated/sklearn.model_selection.GridSearchCV.html)
+- [Scikit-learn pipelines](https://scikit-learn.org/stable/modules/compose.html)
 - [PyTorch](https://pytorch.org/)
+- [PyTorch model checkpoints](https://docs.pytorch.org/tutorials/beginner/saving_loading_models.html)
 - [gdown public Google Drive downloads](https://github.com/wkentaro/gdown)
+
 
 
