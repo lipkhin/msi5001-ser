@@ -36,7 +36,7 @@ Open [MSI5001_SER.ipynb](MSI5001_SER.ipynb) and run its eight sections in order:
 1. **Install dependency & import library** — prepare the Python environment.
 2. **Load dataset** — read a local WAV directory or ZIP, or download a local copy from a public Google Drive link without mounting Drive.
 3. **Explore and clean dataset** — remove byte-identical duplicates and skip damaged, empty, invalid, or silent WAVs; inspect tables and graphs; listen to one randomly selected recording per emotion.
-4. **Data preprocessing** — convert audio to mono, resample to 16 kHz, and extract 97 acoustic features, plus CNN inputs.
+4. **Data preprocessing** — convert audio to mono, resample to 16 kHz, and choose 97 rich acoustic features or 40 MFCC-only features, plus CNN inputs.
 5. **Train test split (random & LOSO)** — prepare the evaluation splits.
 6. **Feature scaling** — fit scaling statistics separately on each split's training data and apply them to its training and test inputs.
 7. **Model training** — train fresh model instances for every split.
@@ -46,10 +46,16 @@ Open [MSI5001_SER.ipynb](MSI5001_SER.ipynb) and run its eight sections in order:
 
 | Models | Representation |
 | --- | --- |
-| Six scikit-learn models | **97 acoustic features per recording** |
+| Six scikit-learn models | **97 acoustic features** (`rich`, default) or **40 MFCC-only features** (`mfcc`) per recording |
 | CNN | **64 × 128 log-mel spectrogram**, with one input channel |
 
-All recordings use the same fixed feature extraction; there is no feature-set selector.
+Select the feature set in section 4:
+
+```python
+FEATURE_SET = 'rich'  # 'rich': all 97 features; 'mfcc': 40 MFCC mean/std features
+```
+
+`rich` uses every family in the table below. `mfcc` uses only the MFCC row and skips the other feature extraction. Both modes use the same recordings, evaluation splits and model settings. CNN always uses the same log-mel images.
 
 | Feature family | Statistics | Count | What it captures | Possible emotional relevance |
 | --- | --- | ---: | --- | --- |
@@ -86,7 +92,7 @@ Jitter and shimmer are omitted because they require reliable vocal-cycle measure
 
 The four added feature groups contribute **38 features** (2 ZCR + 2 flatness + 20 delta MFCC + 14 contrast), bringing the previous 59-feature baseline to **97**. ZCR, flatness, delta MFCC and contrast are summarised over the whole recording, including quiet frames. Delta MFCCs use a fixed 9-frame first-order filter with nearest-edge padding, including for short clips. Contrast uses `n_bands=6`, which returns 7 bands. All these statistics are calculated independently for each recording.
 
-Re-run sections 4–8 after updating the notebook. The model settings, split definitions and CNN log-mel representation are unchanged. Earlier MFCC-only and 59-feature implementations remain in Git history. Adding features does not guarantee better accuracy or macro F1; learned scaling is fitted on training data only.
+Re-run sections 4–8 after updating the notebook or changing `FEATURE_SET`, so features, scaling, models and results all match the selection. The model settings, split definitions and CNN log-mel representation are unchanged. The 40-feature MFCC-only reference is available through the selector; earlier 59-feature implementations remain in Git history. Adding features does not guarantee better accuracy or macro F1; learned scaling is fitted on training data only.
 
 ## Evaluation
 
@@ -123,7 +129,7 @@ Drive downloads are copied to the runtime's local storage. Local CPU execution i
 
 These experiments are proposed next steps; they are **not implemented in the baseline notebook**. The suggested parameter values are starting search ranges, not established best settings.
 
-1. **Preserve the richer baseline.** Run the fixed 97-feature configuration and record its package versions, split definitions, accuracy, and macro F1. Use earlier commits when reproducing the historical feature baselines.
+1. **Preserve the richer baseline.** Run `FEATURE_SET = 'rich'` (97 features) and record its package versions, split definitions, accuracy, and macro F1. Use `FEATURE_SET = 'mfcc'` for the 40-feature reference and earlier commits for the historical 59-feature baseline.
 2. **Add validation within the training data.** For the random protocol, use group-aware cross-validation inside its training portion. For each outer LOSO fold, tune using only the remaining speakers: with six speakers, the inner loop can train on four and validate on the fifth. Refit the selected configuration on all five outer training speakers before testing the sixth. Fit scaling and feature selection inside each inner training fold. Use validation macro F1 as the main selection metric and retain accuracy alongside it.
 3. **Keep features fixed during initial model tuning.** Use the predefined 97-feature baseline first so that parameter changes can be assessed separately. Investigate further feature selection or alternative feature sets later through the same inner validation procedure.
 4. **Tune the models.** Start with a small search, then refine around promising validation results.
@@ -152,4 +158,5 @@ These experiments are proposed next steps; they are **not implemented in the bas
 - [Nested versus non-nested cross-validation](https://scikit-learn.org/stable/auto_examples/model_selection/plot_nested_cross_validation_iris.html)
 - [PyTorch](https://pytorch.org/)
 - [gdown public Google Drive downloads](https://github.com/wkentaro/gdown)
+
 
