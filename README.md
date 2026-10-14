@@ -46,24 +46,29 @@ Open [MSI5001_SER.ipynb](MSI5001_SER.ipynb) and run its eight sections in order:
 
 | Models | Representation |
 | --- | --- |
-| Six scikit-learn models | **50 acoustic features per recording** by default; optional 40-feature MFCC-only reference |
+| Six scikit-learn models | **59 acoustic features per recording** by default; optional 40-feature MFCC-only reference |
 | CNN | **64 × 128 log-mel spectrogram**, with one input channel |
 
 The main baseline is selected with `FEATURE_SET = 'rich'` in section 4:
 
 | Feature family | Statistics | Count |
 | --- | --- | ---: |
-| MFCC | Mean and standard deviation of each of 20 coefficients | 40 |
-| Pitch (F0) | Mean and standard deviation over voiced frames | 2 |
-| RMS energy | Mean and standard deviation | 2 |
-| Spectral centroid | Mean and standard deviation | 2 |
-| Spectral bandwidth | Mean and standard deviation | 2 |
-| Spectral roll-off (85%) | Mean and standard deviation | 2 |
-| **Total** | | **50** |
+| MFCC | Mean and standard deviation of 20 coefficients | 40 |
+| Pitch (F0) | Voiced F0 mean, std, P5, P95; P5–P95 semitone range | 5 |
+| Energy | Active-frame RMS dBFS mean, std, P5, P95 | 4 |
+| Spectral | Centroid, bandwidth and 85% roll-off mean/std | 6 |
+| Timing | Duration, internal pause ratio, pauses per second, voiced-frame ratio | 4 |
+| **Total** | | **59** |
 
-Pitch uses pYIN with a fixed 50–600 Hz analysis range. Unvoiced or non-finite pitch estimates are excluded; if no voiced pitch is detected, its two statistics are zero. All features are extracted independently per recording, with learned scaling fitted on training data only.
+Pitch uses pYIN over a fixed 50–600 Hz range. Unvoiced or non-finite estimates are excluded; when none remain, all five pitch statistics are zero. The robust pitch range is `12 * log2(P95 / P5)` semitones.
 
-Set `FEATURE_SET = 'mfcc'` to reproduce the earlier **40-feature MFCC-only reference**. Re-run sections 4–8 after changing the feature set. Both modes retain the same model settings, split definitions and CNN log-mel representation. The expanded features are a predefined baseline design, not a claim that they outperform MFCC alone.
+Energy and pause features use 25 ms RMS windows and a 10 ms hop. Active frames are within 30 dB of the maximum frame RMS level in that recording. Energy statistics are calculated over active frames, using dBFS relative to digital full scale. Similar peak levels do not imply equal RMS levels; these measurements do not recover original physical loudness.
+
+Internal low-energy runs lasting at least 150 ms count as pause proxies. Leading and trailing silence are excluded. Pause ratio is the summed duration of qualifying pauses divided by full clip duration; pause rate is their count divided by full clip duration. Voiced ratio is the fraction of pYIN frames flagged as voiced. These thresholds are predefined per-recording rules, not parameters selected from test performance.
+
+Jitter and shimmer are omitted because they require reliable vocal-cycle measurements. Onset rate is omitted because it is not a direct speaking-rate measure. A separate energy-range feature is omitted because the percentile summaries already describe the spread.
+
+Set `FEATURE_SET = 'mfcc'` to reproduce the earlier **40-feature MFCC-only reference**. Re-run sections 4–8 after changing the feature set. Both modes retain the same model settings, split definitions and CNN log-mel representation. The expanded features are a predefined baseline design, not a claim that they outperform MFCC alone. Learned scaling is fitted on training data only.
 
 ## Evaluation
 
@@ -102,7 +107,7 @@ These experiments are proposed next steps; they are **not implemented in the bas
 
 1. **Preserve the richer baseline.** Run the default `FEATURE_SET = 'rich'` configuration and record its package versions, split definitions, accuracy, and macro F1. Keep the optional `FEATURE_SET = 'mfcc'` run as the earlier feature reference.
 2. **Add validation within the training data.** For the random protocol, use group-aware cross-validation inside its training portion. For each outer LOSO fold, tune using only the remaining speakers: with six speakers, the inner loop can train on four and validate on the fifth. Refit the selected configuration on all five outer training speakers before testing the sixth. Fit scaling and feature selection inside each inner training fold. Use validation macro F1 as the main selection metric and retain accuracy alongside it.
-3. **Keep features fixed during initial model tuning.** Use the predefined 50-feature baseline first so that parameter changes can be assessed separately. Investigate further feature selection or alternative feature sets later through the same inner validation procedure.
+3. **Keep features fixed during initial model tuning.** Use the predefined 59-feature baseline first so that parameter changes can be assessed separately. Investigate further feature selection or alternative feature sets later through the same inner validation procedure.
 4. **Tune the models.** Start with a small search, then refine around promising validation results.
 
 | Model | Suggested optimisation sequence |
