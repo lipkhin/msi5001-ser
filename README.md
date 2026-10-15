@@ -13,7 +13,7 @@ Speech conveys both the words being spoken and information about the speaker's e
 
 We compare seven models, ranging from a simple reference baseline and classical machine learning methods to an artificial neural network and a convolutional neural network. The project follows a complete experimental workflow: loading and cleaning audio, exploring the dataset, extracting features, splitting and scaling data, training models, and evaluating predictions using **accuracy** and **macro F1**.
 
-A key objective is to examine how well the models generalise to different speakers. We compare five-fold stratified group random cross-validation, where speakers can appear in both training and testing, with **Leave-One-Speaker-Out (LOSO)** evaluation, where the test speaker is excluded from training. The project documents the progression from a predefined richer-feature baseline with default model settings to validation-based model optimisation, with earlier feature baselines available in the Git history for comparison.
+A key objective is to examine how well the models generalise to different speakers. We compare five-fold stratified group random cross-validation, where speakers can appear in both training and testing, with **Leave-One-Speaker-Out (LOSO)** evaluation, where the test speaker is excluded from training. The project documents the progression from a predefined richer-feature baseline with default model settings to validation-based model optimisation.
 
 ## Running Locally or in Google Colab
 
@@ -123,18 +123,6 @@ The following table is an **interpretation guide, not measured AESDD results or 
 | Disgust | Voice quality and articulation can change, but pitch, level and timing do not have a reliable universal direction. | MFCCs, ZCR, flatness and contrast may capture those timbre differences; delta MFCCs may capture changes in their delivery. |
 
 No individual feature identifies an emotion. The classifiers learn combinations of features from labelled recordings, and speaker-separated validation is needed to check whether those combinations generalise.
-
-Pitch uses pYIN over a fixed 50–600 Hz range. Unvoiced or non-finite estimates are excluded; when none remain, all five pitch statistics are zero. The robust pitch range is `12 * log2(P95 / P5)` semitones.
-
-Energy and pause features use 25 ms RMS windows and a 10 ms hop. Active frames are within 30 dB of the maximum frame RMS level in that recording. Energy statistics are calculated over active frames, using dBFS relative to digital full scale. Similar peak levels do not imply equal RMS levels; these measurements do not recover original physical loudness.
-
-Internal low-energy runs lasting at least 150 ms count as pause proxies. Leading and trailing silence are excluded. Pause ratio is the summed duration of qualifying pauses divided by full clip duration; pause rate is their count divided by full clip duration. Voiced ratio is the fraction of pYIN frames flagged as voiced. These thresholds are predefined per-recording rules, not parameters selected from test performance.
-
-Jitter and shimmer are omitted because they require reliable vocal-cycle measurements. Onset rate is omitted because it is not a direct speaking-rate measure. A separate energy-range feature is omitted because the percentile summaries already describe the spread.
-
-Chroma uses `librosa.feature.chroma_stft(y=audio, sr=16000, n_chroma=12)` with default per-frame normalisation and per-recording tuning estimation. It contributes mean/std for C, C-sharp, D, D-sharp, E, F, F-sharp, G, G-sharp, A, A-sharp and B, in that order. Chroma combines octaves, while the separate F0 features retain pitch height. Its added value for the five emotions is a validation question, not an assumed improvement.
-
-ZCR, flatness, delta MFCC, contrast and chroma are summarised over the whole recording, including quiet frames. Delta MFCCs use a fixed 9-frame first-order filter with nearest-edge padding, including for short clips. Contrast uses `n_bands=6`, which returns 7 bands. All statistics are calculated independently for each recording.
 
 Re-run sections 4–10 after updating the notebook or changing `FEATURE_SET`, so features, scaling, models and results all match the selection. The model settings, split definitions and CNN log-mel representation are unchanged.
 
