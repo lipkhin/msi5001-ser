@@ -60,7 +60,7 @@ Open [MSI5001_SER.ipynb](MSI5001_SER.ipynb) and run sections 1–10 in order:
 5. **Train test split (random & LOSO)** — prepare all five random CV folds and all six speaker-held-out LOSO folds.
 6. **Feature scaling** — fit scaling statistics separately on each split's training data and apply them to its training and test inputs.
 7. **Model training** — train fresh model instances for every split.
-8. **Model prediction and evaluation** — display pooled out-of-fold baseline accuracy/macro F1, fold mean ± standard deviation and charts.
+8. **Model prediction and evaluation** — display pooled out-of-fold baseline accuracy/macro F1, fold statistics, training/test diagnostics and charts.
 9. **Model Optimisation & Hyperparameter Tuning** — preserve baseline results, set up inner validation, and tune each model:
    - **9.1 Baseline results**
    - **9.2 Optimisation method**
@@ -70,7 +70,7 @@ Open [MSI5001_SER.ipynb](MSI5001_SER.ipynb) and run sections 1–10 in order:
    - **9.6 SVM optimisation**
    - **9.7 MLP optimisation**
    - **9.8 CNN optimisation**
-10. **Final model prediction and evaluation** — compare both stages on the same outer test recordings, including pooled score changes, fold mean ± standard deviation, per-speaker LOSO macro F1 and charts.
+10. **Final model prediction and evaluation** — compare both stages on the same outer test recordings, including pooled score changes, fold mean ± standard deviation, per-speaker LOSO accuracy/macro F1 and charts.
 
 ### Input Features
 
@@ -87,7 +87,7 @@ Select the mode in section 4:
 FEATURE_SET = 'rich'  # 'basic' or 'rich'
 ```
 
-`basic` uses only the MFCC row below and skips the other acoustic feature extraction. `rich` uses every family. Both modes use the same recordings, evaluation splits and training budgets. Baseline and optimised models use the selected inputs consistently. The former `'mfcc'` selector is now called `'basic'`.
+`basic` uses only the MFCC row below and skips the other acoustic feature extraction. `rich` uses every family. Both modes use the same recordings, evaluation splits and training budgets. Both stages start from the selected inputs; classical tuning may select feature subsets within that preset. The former `'mfcc'` selector is now called `'basic'`.
 
 | Category | Feature | Summary statistics | Count | What it captures | Possible emotional relevance |
 | --- | --- | --- | ---: | --- | --- |
@@ -140,7 +140,7 @@ Extract log-mel at 16 kHz using the existing mel-spectrogram settings. In rich m
 
 Section 4 displays the selected input shapes and plots every CNN channel. Both baseline and tuned CNNs infer the number of input channels automatically. Fit one mean and standard deviation **per channel**, across training recordings, mel bands and time bins. Apply those statistics to the corresponding validation/test inputs; clip zero standard deviations to `1e-8`. Inner validation fits its own training-channel statistics, and the selected CNN's final refit stores statistics from all outer training images.
 
-Re-run sections **4–10** after changing `FEATURE_SET`, so features, scaling, models and results match the selection. Rich adds an explicit view of temporal changes; it is not guaranteed to improve accuracy. Comparing basic and rich changes the inputs for both model families, so it measures the complete feature preset rather than isolating hyperparameter tuning. Baseline-versus-optimised comparisons within one mode keep inputs fixed.
+Re-run sections **4–10** after changing `FEATURE_SET`, so features, scaling, models and results match the selection. Rich adds an explicit view of temporal changes; it is not guaranteed to improve accuracy. Comparing basic and rich changes the inputs for both model families, so it measures the complete feature preset rather than isolating hyperparameter tuning. Baseline-versus-optimised comparisons within one mode keep the available input preset and outer folds fixed; classical tuning may select a feature subset.
 
 ## Evaluation
 
@@ -157,49 +157,102 @@ A second table reports the **unweighted mean ± sample standard deviation (`ddof
 
 ## Model Optimisation & Hyperparameter Tuning
 
-Section 9 implements a compact, reproducible search for the selected feature set. It preserves the default baseline and keeps the outer random and LOSO test recordings fixed. Candidate lists are starting search spaces, not established best settings or a guarantee of improvement. DummyClassifier remains unchanged.
+Section 9 jointly selects classical feature groups and model settings, and compares CNN architectures with validation-based training. It preserves the original baseline and uses the same outer test recordings for both stages. DummyClassifier remains unchanged. Improvement is not guaranteed; negative changes are retained.
 
 ### Validation and model selection
 
-Every outer training split gets its own tuning run: **five random runs and six LOSO runs**. Inner validation is separate from outer evaluation:
+Every outer training split gets its own tuning run: **five random runs and six LOSO runs**.
 
-| Outer protocol | Inner validation | Default run |
+| Outer protocol | Default inner validation | What stays separate |
 | --- | --- | --- |
-| Random | Shuffled `StratifiedGroupKFold` within each of the five outer training folds, keeping alternate takes together | 3 inner folds per outer fold |
-| LOSO | Hold out training speakers one at a time; the outer test speaker never enters tuning | 2 predetermined inner speaker holdouts per outer fold; set `INNER_LOSO_FOLDS = None` to use all 5 remaining speakers in AESDD |
+| Random | **4 shuffled stratified group folds** inside each outer training fold | Alternate takes stay together; the outer test clips are excluded |
+| LOSO | **All remaining speakers**, one inner validation speaker at a time: **5 holdouts for AESDD** | The outer test speaker never enters tuning; inner training uses the other 4 speakers |
 
-The same inner folds are used by the classical models and CNN. The compact default limits runtime; using all inner speaker holdouts provides broader validation coverage at higher cost. Settings are selected by **mean validation macro F1**, with validation accuracy retained alongside it. Each outer fold can select different settings.
+Defaults are `INNER_RANDOM_FOLDS = 4` and `INNER_LOSO_FOLDS = None`. The same inner folds are shared across models. Section 9.2 displays the validation plan and speaker coverage; with full inner LOSO, each AESDD speaker serves as validation in five eligible outer runs. Reducing the inner holdout count is possible but reduces speaker coverage.
 
-Classical searches use a `Pipeline(StandardScaler, model)` with raw acoustic features. Scaling is fitted within each inner training fold, then fitted again on all outer training recordings during the selected model's refit. CNN image mean/std are also computed separately for each channel from the appropriate inner training images. The outer-scaled arrays in section 6 are not used for tuning. Outer test scores never select hyperparameters, checkpoints or epoch counts.
+Select model settings by **mean inner-validation macro F1**, with accuracy retained alongside it. Each outer fold can select a different configuration. Classical searches use `Pipeline(feature selector, StandardScaler, model)` on raw X. Each inner fold fits its own scaler; the selected pipeline then refits on all outer training clips. CNN channel normalisation is also fitted only on the appropriate training images. Section 6's outer-scaled arrays are not used for inner tuning.
+
+Outer test results never select parameters, features, checkpoints, learning-rate schedules or refit epochs. Do not choose baseline versus tuned separately for each outer fold using its test score. Further designs made after inspecting outer results remain exploratory until independently confirmed.
+
+### Feature-group selection
+
+Keep `FEATURE_SET = 'basic'` or `'rich'` in section 4. It still controls the predefined inputs for both model families. Classical tuning additionally selects from the feature groups available within that preset:
+
+| Feature-group candidate | Rich-mode count | Purpose |
+| --- | ---: | --- |
+| All available features | 120 | Full predefined representation and default-parameter reference |
+| MFCC | 40 | Test the simpler cepstral representation |
+| MFCC + spectral | 62 | Add spectral brightness, spread, roll-off, flatness and contrast |
+| MFCC + prosodic | 52 | Add pitch, energy, pauses and voicing |
+| All except chroma | 96 | Test whether pitch-class descriptors contribute useful information |
+
+Basic mode has only 40 MFCC features, so all duplicate feature-group candidates collapse to a single option. No unavailable features are extracted or invented. Rich-mode family selection does not change the CNN's three-channel input. Feature groups and model parameters are selected jointly inside inner validation, independently for each model and outer fold. Section 9 records the selected group, count and complete settings.
 
 ### Implemented searches
 
-| Subsection | Model | Compact search |
-| --- | --- | --- |
-| 9.3 | KNN | 3/5/11 neighbours × uniform/distance weights × Manhattan/Euclidean distance (12 candidates) |
-| 9.4 | Logistic Regression | Default C=1/max_iter=100 reference; C=0.1/1/10 with max_iter=1500 (4 candidates) |
-| 9.5 | Random Forest | Default tree settings, depth 10 with leaf size 2, unrestricted depth with leaf size 4, and 300 trees with leaf size 2 (4 candidates) |
-| 9.6 | SVM | RBF C=1/10 with gamma=scale; RBF C=10/100 with gamma=0.01; linear C=1/10 (6 candidates) |
-| 9.7 | MLP | Default 100-neuron/200-iteration reference; 100/64/128 neurons with max_iter=1500; (64,32) with alpha=0.001 and learning_rate_init=0.0003 (5 candidates) |
-| 9.8 | CNN | Original architecture with longer training; lower learning rate; 2×2 spatial pooling with dropout and weight decay (3 candidates) |
+The counts below include default-parameter references for classical models. Rich mode has five feature-group options; basic has one.
 
-Random Forest and MLP tuning use seed 42. MLP's internal random early stopping is disabled; its validation stays under the explicit group-aware procedure. Default-parameter references are included in the classical searches. Convergence warnings remain visible even with a higher iteration budget.
+| Subsection | Model | Model settings searched | Model combinations | Total candidates: basic / rich |
+| --- | --- | --- | ---: | ---: |
+| 9.3 | KNN | k = **3/5/7/9/11**; uniform/distance weighting; Manhattan/Euclidean distance | 20 | 20 / 100 |
+| 9.4 | Logistic Regression | C=1/max_iter=100 reference; C=0.1/1/10 with max_iter=1500 | 4 | 4 / 20 |
+| 9.5 | Random Forest | Six structural configurations: default; depth 10/leaf 2; unrestricted depth/leaf 4; 300 trees/leaf 2; depth 6/leaf 8/max_features=0.5; depth 10/leaf 4/max_features=0.5 | 6 | 6 / 30 |
+| 9.6 | SVM | RBF C=0.01/0.1/1/10/100/1000 × gamma=scale/0.0001/0.001/0.01/0.1; linear C=1/10 | 32 | 32 / 160 |
+| 9.7 | MLP | 100-neuron Adam reference at 200 and 1500 iterations; 32/64-neuron networks × Adam/L-BFGS × alpha=0.0001/0.01/0.1 at up to 1500 iterations | 14 | 14 / 70 |
+| 9.8 | CNN | Compact spatial reference; stronger CNN at LR=0.001; stronger CNN at LR=0.0003 | 3 | 3 / 3 |
 
-CNN retains the 10-epoch baseline for the selected feature mode in section 7; baseline and tuning both use one channel in basic mode or three channels in rich mode. Tuning uses Adam, batch size 32, a maximum of 20 epochs and patience 4 by default. Validation macro F1 selects a copied best-epoch checkpoint inside each inner fold. The candidate with the highest mean best-epoch macro F1 is selected; ties use candidate order. Its median inner best epoch, rounded up, determines the number of epochs for a fresh refit on all outer training images. No outer test data are used for early stopping. Training and validation curves illustrate the selected candidate in random outer fold 1, inner fold 1; that example is fixed before viewing test scores. The spatial CNN and two-layer MLP candidates change multiple settings together; further ablations are needed to separate those settings' effects.
+The first four Random Forest configurations use max_features='sqrt'; all use 100 trees except the explicit 300-tree candidate. RF and MLP tuning use seed 42. MLP's internal random early stopping is disabled so validation stays under the explicit group-aware procedure. L-BFGS does not use Adam's learning-rate setting. Convergence warnings remain visible; allowing more iterations does not guarantee better held-out performance.
 
-### Running and reviewing optimisation
+### CNN architecture and training
 
-1. Run sections 1–8 to establish the baseline.
-2. Choose the validation and compute settings in **9.2** before starting searches. `TUNING_JOBS = 1` is the default; CNN uses CUDA automatically when available.
-3. Run **9.3–9.8** in order. Each model shows its candidates, validation scores for random outer fold 1 as an illustration, and selected settings for all 11 outer splits. Full candidate results for every fold remain in `validation_results`. CNN adds validation curves.
-4. Run **10** after all models finish. It reports pooled out-of-fold baseline/optimised accuracy and macro F1 for both protocols, fold mean ± sample standard deviation, pooled accuracy changes in percentage points, pooled macro F1 changes, per-speaker LOSO macro F1 and comparison charts.
-5. To compare `basic` and `rich`, run **4–10** separately for each selection and record both runs. The feature set is kept fixed within a tuning run.
+The original section 7 CNN stays unchanged: two convolutions, global average pooling and 10 epochs. Section 9 compares:
 
-Re-running 9.2 clears previous tuning state, so re-run 9.3–10 afterwards. Using five random outer folds increases random-protocol baseline training and tuning from one outer run to five. MLP, CNN and full inner LOSO validation can take substantially longer, especially on CPU. The notebook is saved without outputs; results are generated when run locally or in Colab.
+| Candidate | Architecture | Initial LR | Dropout | Weight decay |
+| --- | --- | ---: | ---: | ---: |
+| Compact spatial reference | Conv 16/32, two max-pooling layers, 2×2 adaptive pooling and linear classifier | 0.001 | 0.3 | 0.0001 |
+| Stronger CNN | Conv 16/32/64 with batch normalisation, two max-pooling layers, 4×4 adaptive pooling and 64-neuron dense layer | 0.001 | 0.2 | 0.0001 |
+| Stronger CNN, lower learning rate | Same stronger architecture | 0.0003 | 0.2 | 0.0001 |
+
+All infer one input channel in basic mode or three in rich mode, use Adam and batch size 32, and automatically use CUDA when available. The stronger architecture changes several components together; further ablations are needed to attribute any gain to a single component.
+
+Training defaults in section 9.2:
+
+| Setting | Default | Role |
+| --- | ---: | --- |
+| `CNN_MAX_EPOCHS` | 100 | Upper limit for each inner training run |
+| `CNN_MIN_EPOCHS` | 20 | Delay stopping until at least this many epochs have run, capped by the run's epoch limit |
+| `CNN_PATIENCE` | 15 | Stop after this many epochs without sufficient validation-loss improvement, once minimum training is complete |
+| `CNN_LR_PATIENCE` | 5 | `ReduceLROnPlateau` halves LR after this patience is exceeded without sufficient validation-loss improvement |
+| `CNN_MIN_LR` | 0.00001 | Minimum scheduled LR |
+
+Checkpointing and stopping use a validation-loss improvement threshold of 0.0001. The scheduler uses the same absolute threshold. The minimum training duration delays stopping; it **does not** force the best checkpoint or final refit to occur at epoch 20 or later.
+
+For every inner fold, restore a copied **lowest-validation-loss checkpoint** and record its macro F1/accuracy. Select the candidate with the highest mean checkpoint macro F1, using candidate order to resolve ties. Its median inner best epoch, rounded up, determines a fresh refit's duration on all outer training clips.
+
+The refit's LR schedule is the median recorded inner LR at each refit epoch; shorter inner histories are extended with their last recorded LR. This transfers a validation-derived schedule without monitoring the outer test set. No inner model weights are reused. The fitted bundle stores the model, outer-training normalisation, configuration, epoch count and LR schedule.
+
+### Diagnostics and result display
+
+- **Section 8/9.1:** baseline training/test accuracy and macro F1, averaged across outer folds, alongside pooled held-out scores.
+- **Each classical tuning section:** feature-group candidates, complete settings, the top 15 candidates for random outer fold 1, selected settings for every outer fold, and an inner-training versus validation macro F1 graph. Full candidate tables remain in `validation_results`.
+- **CNN:** training/validation loss and macro F1, LR histories, selected checkpoint/refit epochs and F1 gaps. Curves use the first outer fold and first inner fold of each protocol, fixed independently of outer test performance. Inner training/validation losses and F1 are evaluated in evaluation mode; optimisation loss is retained separately.
+- **Section 10:** pooled baseline/tuned scores and changes, fold mean ± sample standard deviation, and separate per-speaker LOSO accuracy and macro F1 tables.
+
+Pandas displays full settings text and all columns. Training scores are resubstitution diagnostics, not generalisation estimates; distance-weighted KNN can score perfectly on its own training data. Compare training/validation gaps and per-speaker variation before increasing model size or training duration.
+
+### Running optimisation
+
+1. Run sections 1–8 for the selected basic/rich preset. Retain the original baseline for learning-progress comparisons.
+2. Review validation and compute settings in **9.2**. `TUNING_JOBS = 1` is the conservative default; larger values parallelise classical searches, while CNN selects CPU/CUDA separately.
+3. Run **9.3–9.8**, then **10**. Re-running 9.2 clears previous tuning state, so re-run the remaining tuning/evaluation cells afterwards.
+4. Re-run **4–10** when changing basic/rich inputs. Within a run, the baseline input preset and outer test clips stay fixed, while classical tuning may select subsets of its available features.
+
+Expanded feature/parameter searches and full inner LOSO require substantially more computation than the compact search. In rich mode there are 380 classical candidates per outer training split, with four or five inner fits per candidate plus refitting. CNN has 150 inner candidate runs across the 11 outer folds, each with up to 100 epochs. CPU execution can be lengthy; GPU acceleration applies to CNN, not the scikit-learn MLP. The notebook is saved without outputs; generate updated nested scores by executing it. Exploratory fixed-epoch CNN results are not hard-coded as final tuned results.
 
 ### Further experiments
 
-After recording this compact search, refine promising validation ranges, test feature selection inside inner training folds, perform CNN augmentation/regularisation ablations, and repeat the predefined procedure with multiple training seeds. Keep the outer splits fixed and use inner validation to choose changes; retain negative outer-test changes in the report rather than discarding them.
+After recording the predefined search, test feature selection/PCA refinements, mild training-only CNN augmentation, architecture/regularisation ablations and multiple predefined training seeds. Keep related or augmented copies within their source recording's training partition. Select changes through inner validation and retain negative outer-test changes. More diverse speakers may be needed if unseen-speaker performance remains limited.
+
 
 ## References
 
@@ -221,3 +274,8 @@ After recording this compact search, refine promising validation ranges, test fe
 
 
 
+
+
+- [Scikit-learn feature selection](https://scikit-learn.org/stable/modules/feature_selection.html)
+- [Scikit-learn RBF SVM parameter selection](https://scikit-learn.org/stable/auto_examples/svm/plot_rbf_parameters.html)
+- [Scikit-learn MLP practical guidance](https://scikit-learn.org/stable/modules/neural_networks_supervised.html)
