@@ -29,6 +29,26 @@ A key objective is to examine how well the models generalise to different speake
 
 Sections 1–8 establish an **untuned model baseline using predefined audio features**. Section 9 implements validation-based hyperparameter tuning; section 10 compares baseline and optimised predictions. The six scikit-learn classifiers retain their default constructor settings, including MLP's 200-iteration limit. The custom CNN uses two convolution layers, Adam, a batch size of 32, and 10 epochs. CUDA is selected automatically when available; the scikit-learn models run on CPU.
 
+## Running Locally or in Google Colab
+
+### Local: VS Code
+
+1. Clone this repository and open its folder in VS Code.
+2. Install the Microsoft **Python** and **Jupyter** extensions.
+3. Create or select a Python environment and choose it as the notebook kernel.
+4. Install the dependencies using the optional cell in section 1, then restart the kernel after upgrades if required. If the environment is already configured, skip that cell. For NVIDIA GPU execution, install a compatible CUDA-enabled PyTorch build using the [official PyTorch installer](https://pytorch.org/get-started/locally/).
+5. Set `SOURCE = 'local'` and point `LOCAL_PATH` to your AESDD directory or ZIP. The default path is `./AESDD` relative to the notebook's working directory.
+6. Run all sections in order.
+
+### Google Colab
+
+1. Open the notebook from this repository in Colab.
+2. Select a GPU runtime if required for CNN training.
+3. Set `SOURCE = 'drive'` and paste your public dataset folder or ZIP URL into `DRIVE_URL`. The sharing setting must allow **Anyone with the link → Viewer**.
+4. Run the required installation cell, then run the remaining sections in order.
+
+Drive downloads are copied to the runtime's local storage. Local CPU execution is also supported.
+
 ## Notebook Workflow
 
 Open [MSI5001_SER.ipynb](MSI5001_SER.ipynb) and run sections 1–10 in order:
@@ -67,22 +87,20 @@ FEATURE_SET = 'rich'  # 'rich': all 120 features; 'mfcc': 40 MFCC mean/std featu
 
 `rich` uses every family in the table below. `mfcc` uses only the MFCC row and skips the other feature extraction. Both modes use the same recordings, evaluation splits and model settings. CNN always uses the same log-mel images.
 
-Feature vectors and tables follow **Cepstral → Spectral → Prosodic → Harmonic → Time-domain**. MFCC mode includes only the first row.
-
-| Category | Feature | Summary statistics | What it captures | Count | Possible emotional relevance |
+| Category | Feature | Summary statistics | Count | What it captures | Possible emotional relevance |
 | --- | --- | --- | --- | ---: | --- |
-| Cepstral | MFCC | Mean/std of 20 coefficients | Voice timbre and variation in the spectral envelope | 40 | Can describe timbre differences across all five emotions; individual coefficients have no simple emotion label. |
-| | Delta MFCC | Std of 20 first-order delta coefficients | Changes in the spectral envelope over time | 20 | May distinguish changing or abrupt delivery from steadier delivery; also captures phonetic changes. |
-| Spectral | Spectral centroid | Mean/std | Centre of spectral energy; spectral brightness | 2 | May describe brighter versus darker delivery; emotion patterns overlap. |
-| | Spectral bandwidth | Mean/std | Spread of energy around the centroid | 2 | May describe differences in spectral spread associated with articulation and delivery. |
-| | Spectral roll-off | Mean/std | Frequency below which 85% of spectral energy lies | 2 | May describe differences in upper-frequency energy; not specific to any one emotion. |
-| | Spectral flatness | Mean/std | Noise-like versus tonal spectral structure | 2 | May describe voice texture; noise and silence also affect it, so it is not a direct breathiness measure. |
-| | Spectral contrast | Mean/std across 7 frequency bands | Differences between spectral peaks and valleys | 14 | Adds spectral structure that may help separate overlapping emotion classes; no universal higher/lower direction. |
-| Prosodic | Pitch (F0) | Mean, std, P5, P95 and P5–P95 range in semitones | Pitch height and variation | 5 | Helps describe arousal and intonation; see the emotion examples below. |
-| | Energy | Active-frame RMS dBFS: mean, std, P5 and P95 | Digital signal level and its variation | 4 | May distinguish forceful and subdued delivery; recording gain and normalisation also affect it. |
-| | Timing and voicing | Pause ratio, pauses per second and voiced-frame ratio | Pausing and proportion of detected voiced speech | 3 | May distinguish interrupted and continuous delivery; patterns depend on the speaker and spoken content. |
-| Harmonic | Chroma | Mean/std across 12 pitch classes | Distribution and variation of pitch-class energy | 24 | Candidate complementary pitch-class cues for all five emotions; no fixed pitch class identifies an emotion. |
-| Time-domain | Zero-crossing rate | Mean/std | Frequency of waveform sign changes | 2 | May describe noisy/unvoiced articulation; a high value is not uniquely associated with any emotion. |
+| Cepstral | MFCC | Mean/std of 20 coefficients | 40 | Voice timbre and variation in the spectral envelope | Can describe timbre differences across all five emotions; individual coefficients have no simple emotion label. |
+| | Delta MFCC | Std of 20 first-order delta coefficients | 20 | Changes in the spectral envelope over time | May distinguish changing or abrupt delivery from steadier delivery; also captures phonetic changes. |
+| Spectral | Spectral centroid | Mean/std | 2 | Centre of spectral energy; spectral brightness | May describe brighter versus darker delivery; emotion patterns overlap. |
+| | Spectral bandwidth | Mean/std | 2 | Spread of energy around the centroid | May describe differences in spectral spread associated with articulation and delivery. |
+| | Spectral roll-off | Mean/std | 2 | Frequency below which 85% of spectral energy lies | May describe differences in upper-frequency energy; not specific to any one emotion. |
+| | Spectral flatness | Mean/std | 2 | Noise-like versus tonal spectral structure | May describe voice texture; noise and silence also affect it, so it is not a direct breathiness measure. |
+| | Spectral contrast | Mean/std across 7 frequency bands | 14 | Differences between spectral peaks and valleys | Adds spectral structure that may help separate overlapping emotion classes; no universal higher/lower direction. |
+| Prosodic | Pitch (F0) | Mean, std, P5, P95 and P5–P95 range in semitones | 5 | Pitch height and variation | Helps describe arousal and intonation; see the emotion examples below. |
+| | Energy | Active-frame RMS dBFS: mean, std, P5 and P95 | 4 | Digital signal level and its variation | May distinguish forceful and subdued delivery; recording gain and normalisation also affect it. |
+| | Timing and voicing | Pause ratio, pauses per second and voiced-frame ratio | 3 | Pausing and proportion of detected voiced speech | May distinguish interrupted and continuous delivery; patterns depend on the speaker and spoken content. |
+| Harmonic | Chroma | Mean/std across 12 pitch classes | 24 | Distribution and variation of pitch-class energy | Candidate complementary pitch-class cues for all five emotions; no fixed pitch class identifies an emotion. |
+| Time-domain | Zero-crossing rate | Mean/std | 2 | Frequency of waveform sign changes | May describe noisy/unvoiced articulation; a high value is not uniquely associated with any emotion. |
 | **Total** | | | | **120** | |
 
 | Category | Count |
@@ -114,13 +132,11 @@ Internal low-energy runs lasting at least 150 ms count as pause proxies. Leading
 
 Jitter and shimmer are omitted because they require reliable vocal-cycle measurements. Onset rate is omitted because it is not a direct speaking-rate measure. A separate energy-range feature is omitted because the percentile summaries already describe the spread.
 
-The rich set now has **120 features**: the previous **97**, plus **24 chroma summaries**, minus **1 clip-duration feature**. Duration remains in metadata, audio exploration and pause calculations, but is excluded from model inputs because it also reflects spoken-content length. All other existing measurements retain their definitions; the columns are reordered by category.
-
 Chroma uses `librosa.feature.chroma_stft(y=audio, sr=16000, n_chroma=12)` with default per-frame normalisation and per-recording tuning estimation. It contributes mean/std for C, C-sharp, D, D-sharp, E, F, F-sharp, G, G-sharp, A, A-sharp and B, in that order. Chroma combines octaves, while the separate F0 features retain pitch height. Its added value for the five emotions is a validation question, not an assumed improvement.
 
 ZCR, flatness, delta MFCC, contrast and chroma are summarised over the whole recording, including quiet frames. Delta MFCCs use a fixed 9-frame first-order filter with nearest-edge padding, including for short clips. Contrast uses `n_bands=6`, which returns 7 bands. All statistics are calculated independently for each recording.
 
-Re-run sections 4–10 after updating the notebook or changing `FEATURE_SET`, so features, scaling, models and results all match the selection. The model settings, split definitions and CNN log-mel representation are unchanged. The 40-feature MFCC-only reference is available through the selector; earlier 59- and 97-feature implementations remain in Git history. Adding features does not guarantee better accuracy or macro F1; learned scaling is fitted on training data only.
+Re-run sections 4–10 after updating the notebook or changing `FEATURE_SET`, so features, scaling, models and results all match the selection. The model settings, split definitions and CNN log-mel representation are unchanged.
 
 ## Evaluation
 
@@ -132,26 +148,6 @@ Re-run sections 4–10 after updating the notebook or changing `FEATURE_SET`, so
 The random protocol uses **one split**, rather than averaging five-fold cross-validation results. Class proportions are preserved as closely as the grouping constraints allow. LOSO follows speaker boundaries and does not redistribute recordings to enforce stratification.
 
 The notebook reports **pooled LOSO** scores: combine the held-out predictions from all speakers, then calculate accuracy and macro F1 once. This differs from averaging speaker-level scores. Macro F1 gives each emotion equal weight.
-
-## Running Locally or in Google Colab
-
-### Local: VS Code
-
-1. Clone this repository and open its folder in VS Code.
-2. Install the Microsoft **Python** and **Jupyter** extensions.
-3. Create or select a Python environment and choose it as the notebook kernel.
-4. Install the dependencies using the optional cell in section 1, then restart the kernel after upgrades if required. If the environment is already configured, skip that cell. For NVIDIA GPU execution, install a compatible CUDA-enabled PyTorch build using the [official PyTorch installer](https://pytorch.org/get-started/locally/).
-5. Set `SOURCE = 'local'` and point `LOCAL_PATH` to your AESDD directory or ZIP. The default path is `./AESDD` relative to the notebook's working directory.
-6. Run all sections in order.
-
-### Google Colab
-
-1. Open the notebook from this repository in Colab.
-2. Select a GPU runtime if required for CNN training.
-3. Set `SOURCE = 'drive'` and paste your public dataset folder or ZIP URL into `DRIVE_URL`. The sharing setting must allow **Anyone with the link → Viewer**.
-4. Run the required installation cell, then run the remaining sections in order.
-
-Drive downloads are copied to the runtime's local storage. Local CPU execution is also supported.
 
 ## Model Optimisation & Hyperparameter Tuning
 
