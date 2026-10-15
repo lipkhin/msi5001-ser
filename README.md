@@ -101,7 +101,7 @@ FEATURE_SET = 'rich'  # 'rich': all 120 features; 'mfcc': 40 MFCC mean/std featu
 | | Timing and voicing | Pause ratio, pauses per second and voiced-frame ratio | 3 | Pausing and proportion of detected voiced speech | May distinguish interrupted and continuous delivery; patterns depend on the speaker and spoken content. |
 | Harmonic | Chroma | Mean/std across 12 pitch classes | 24 | Distribution and variation of pitch-class energy | Candidate complementary pitch-class cues for all five emotions; no fixed pitch class identifies an emotion. |
 | Time-domain | Zero-crossing rate | Mean/std | 2 | Frequency of waveform sign changes | May describe noisy/unvoiced articulation; a high value is not uniquely associated with any emotion. |
-| **Total** | | | | **120** | |
+| **Total** | | | **120** | | |
 
 | Category | Count |
 | --- | ---: |
