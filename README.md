@@ -45,7 +45,7 @@ Drive downloads are copied to the runtime's local storage. Local CPU execution i
 | Random Forest | Ensemble of decision trees |
 | Support Vector Machine (SVM) | Nonlinear classifier using the default RBF kernel |
 | Multilayer Perceptron (MLP) | Artificial neural network |
-| Convolutional Neural Network (CNN) | Neural network trained on log-mel spectrograms |
+| Convolutional Neural Network (CNN) | Neural network trained on log-mel inputs, with temporal derivatives in rich mode |
 
 Sections 1–8 establish an **untuned model baseline using predefined audio features**. Section 9 implements validation-based hyperparameter tuning; section 10 compares baseline and optimised predictions. The six scikit-learn classifiers retain their default constructor settings, including MLP's 200-iteration limit. The custom CNN uses two convolution layers, Adam, a batch size of 32, and 10 epochs. CUDA is selected automatically when available; the scikit-learn models run on CPU.
 
@@ -56,7 +56,7 @@ Open [MSI5001_SER.ipynb](MSI5001_SER.ipynb) and run sections 1–10 in order:
 1. **Install dependency & import library** — prepare the Python environment.
 2. **Load dataset** — read a local WAV directory or ZIP, or download a local copy from a public Google Drive link without mounting Drive.
 3. **Explore and clean dataset** — remove byte-identical duplicates and skip damaged, empty, invalid, or silent WAVs; inspect tables and graphs; listen to one randomly selected recording per emotion.
-4. **Data preprocessing** — convert audio to mono, resample to 16 kHz, and choose 120 rich acoustic features or 40 MFCC-only features, plus CNN inputs.
+4. **Data preprocessing** — convert audio to mono, resample to 16 kHz, and choose basic (40 MFCC features + log-mel CNN input) or rich (120 acoustic features + log-mel/delta/delta-delta CNN input).
 5. **Train test split (random & LOSO)** — prepare all five random CV folds and all six speaker-held-out LOSO folds.
 6. **Feature scaling** — fit scaling statistics separately on each split's training data and apply them to its training and test inputs.
 7. **Model training** — train fresh model instances for every split.
@@ -74,18 +74,20 @@ Open [MSI5001_SER.ipynb](MSI5001_SER.ipynb) and run sections 1–10 in order:
 
 ### Input Features
 
-| Models | Representation |
-| --- | --- |
-| Six scikit-learn models | **120 acoustic features** (`rich`, default) or **40 MFCC-only features** (`mfcc`) per recording |
-| CNN | **64 × 128 log-mel spectrogram**, with one input channel |
+One selector controls both the scikit-learn features and CNN inputs:
 
-Select the feature set in section 4:
+| `FEATURE_SET` | Six scikit-learn models | CNN input per recording |
+| --- | --- | --- |
+| `'basic'` | **40 MFCC mean/std features** | **Log-mel only: 1 × 64 × 128** |
+| `'rich'` (default) | **120 acoustic features** | **Log-mel + delta + delta-delta: 3 × 64 × 128** |
+
+Select the mode in section 4:
 
 ```python
-FEATURE_SET = 'rich'  # 'rich': all 120 features; 'mfcc': 40 MFCC mean/std features
+FEATURE_SET = 'rich'  # 'basic' or 'rich'
 ```
 
-`rich` uses every family in the table below. `mfcc` uses only the MFCC row and skips the other feature extraction. Both modes use the same recordings, evaluation splits and model settings. CNN always uses the same log-mel images.
+`basic` uses only the MFCC row below and skips the other acoustic feature extraction. `rich` uses every family. Both modes use the same recordings, evaluation splits and training budgets. Baseline and optimised models use the selected inputs consistently. The former `'mfcc'` selector is now called `'basic'`.
 
 | Category | Feature | Summary statistics | Count | What it captures | Possible emotional relevance |
 | --- | --- | --- | ---: | --- | --- |
@@ -124,7 +126,21 @@ The following table is an **interpretation guide, not measured AESDD results or 
 
 No individual feature identifies an emotion. The classifiers learn combinations of features from labelled recordings, and speaker-separated validation is needed to check whether those combinations generalise.
 
-Re-run sections 4–10 after updating the notebook or changing `FEATURE_SET`, so features, scaling, models and results all match the selection. The model settings, split definitions and CNN log-mel representation are unchanged.
+Chroma extraction uses `tuning=0.0`: a fixed A440 reference that bypasses the automatic tuning-estimation path responsible for the reported Numba cast warning. It does not change the audio waveform or the 120-feature count.
+
+### CNN input channels
+
+| Channel | Included in | What it captures |
+| --- | --- | --- |
+| Log-mel | Basic and rich | Energy across 64 mel-frequency bands over time |
+| Delta of log-mel | Rich | First-order changes across neighbouring time frames |
+| Delta-delta of log-mel | Rich | Second-order changes across neighbouring time frames |
+
+Extract log-mel at 16 kHz using the existing mel-spectrogram settings. In rich mode, compute first- and second-order temporal derivatives with `librosa.feature.delta`, a 9-frame window, `axis=-1` and nearest-edge padding. Compute derivatives on the original log-mel frames **before** resizing the stacked channels together to 64 × 128. Channel order is log-mel, delta, delta-delta. These derivatives are distinct from the delta MFCC summaries used by the classical models; CNN does not receive an MFCC sequence.
+
+Section 4 displays the selected input shapes and plots every CNN channel. Both baseline and tuned CNNs infer the number of input channels automatically. Fit one mean and standard deviation **per channel**, across training recordings, mel bands and time bins. Apply those statistics to the corresponding validation/test inputs; clip zero standard deviations to `1e-8`. Inner validation fits its own training-channel statistics, and the selected CNN's final refit stores statistics from all outer training images.
+
+Re-run sections **4–10** after changing `FEATURE_SET`, so features, scaling, models and results match the selection. Rich adds an explicit view of temporal changes; it is not guaranteed to improve accuracy. Comparing basic and rich changes the inputs for both model families, so it measures the complete feature preset rather than isolating hyperparameter tuning. Baseline-versus-optimised comparisons within one mode keep inputs fixed.
 
 ## Evaluation
 
@@ -154,7 +170,7 @@ Every outer training split gets its own tuning run: **five random runs and six L
 
 The same inner folds are used by the classical models and CNN. The compact default limits runtime; using all inner speaker holdouts provides broader validation coverage at higher cost. Settings are selected by **mean validation macro F1**, with validation accuracy retained alongside it. Each outer fold can select different settings.
 
-Classical searches use a `Pipeline(StandardScaler, model)` with raw acoustic features. Scaling is fitted within each inner training fold, then fitted again on all outer training recordings during the selected model's refit. CNN image mean/std are also computed separately from the appropriate inner training images. The outer-scaled arrays in section 6 are not used for tuning. Outer test scores never select hyperparameters, checkpoints or epoch counts.
+Classical searches use a `Pipeline(StandardScaler, model)` with raw acoustic features. Scaling is fitted within each inner training fold, then fitted again on all outer training recordings during the selected model's refit. CNN image mean/std are also computed separately for each channel from the appropriate inner training images. The outer-scaled arrays in section 6 are not used for tuning. Outer test scores never select hyperparameters, checkpoints or epoch counts.
 
 ### Implemented searches
 
@@ -169,7 +185,7 @@ Classical searches use a `Pipeline(StandardScaler, model)` with raw acoustic fea
 
 Random Forest and MLP tuning use seed 42. MLP's internal random early stopping is disabled; its validation stays under the explicit group-aware procedure. Default-parameter references are included in the classical searches. Convergence warnings remain visible even with a higher iteration budget.
 
-CNN retains the original baseline in section 7. Tuning uses Adam, batch size 32, a maximum of 20 epochs and patience 4 by default. Validation macro F1 selects a copied best-epoch checkpoint inside each inner fold. The candidate with the highest mean best-epoch macro F1 is selected; ties use candidate order. Its median inner best epoch, rounded up, determines the number of epochs for a fresh refit on all outer training images. No outer test data are used for early stopping. Training and validation curves illustrate the selected candidate in random outer fold 1, inner fold 1; that example is fixed before viewing test scores. The spatial CNN and two-layer MLP candidates change multiple settings together; further ablations are needed to separate those settings' effects.
+CNN retains the 10-epoch baseline for the selected feature mode in section 7; baseline and tuning both use one channel in basic mode or three channels in rich mode. Tuning uses Adam, batch size 32, a maximum of 20 epochs and patience 4 by default. Validation macro F1 selects a copied best-epoch checkpoint inside each inner fold. The candidate with the highest mean best-epoch macro F1 is selected; ties use candidate order. Its median inner best epoch, rounded up, determines the number of epochs for a fresh refit on all outer training images. No outer test data are used for early stopping. Training and validation curves illustrate the selected candidate in random outer fold 1, inner fold 1; that example is fixed before viewing test scores. The spatial CNN and two-layer MLP candidates change multiple settings together; further ablations are needed to separate those settings' effects.
 
 ### Running and reviewing optimisation
 
@@ -177,7 +193,7 @@ CNN retains the original baseline in section 7. Tuning uses Adam, batch size 32,
 2. Choose the validation and compute settings in **9.2** before starting searches. `TUNING_JOBS = 1` is the default; CNN uses CUDA automatically when available.
 3. Run **9.3–9.8** in order. Each model shows its candidates, validation scores for random outer fold 1 as an illustration, and selected settings for all 11 outer splits. Full candidate results for every fold remain in `validation_results`. CNN adds validation curves.
 4. Run **10** after all models finish. It reports pooled out-of-fold baseline/optimised accuracy and macro F1 for both protocols, fold mean ± sample standard deviation, pooled accuracy changes in percentage points, pooled macro F1 changes, per-speaker LOSO macro F1 and comparison charts.
-5. To compare `mfcc` and `rich`, run **4–10** separately for each selection and record both runs. The feature set is kept fixed within a tuning run.
+5. To compare `basic` and `rich`, run **4–10** separately for each selection and record both runs. The feature set is kept fixed within a tuning run.
 
 Re-running 9.2 clears previous tuning state, so re-run 9.3–10 afterwards. Using five random outer folds increases random-protocol baseline training and tuning from one outer run to five. MLP, CNN and full inner LOSO validation can take substantially longer, especially on CPU. The notebook is saved without outputs; results are generated when run locally or in Colab.
 
@@ -199,6 +215,7 @@ After recording this compact search, refine promising validation ranges, test fe
 - [PyTorch](https://pytorch.org/)
 - [PyTorch model checkpoints](https://docs.pytorch.org/tutorials/beginner/saving_loading_models.html)
 - [gdown public Google Drive downloads](https://github.com/wkentaro/gdown)
+
 
 
 
