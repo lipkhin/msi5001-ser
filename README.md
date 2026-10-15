@@ -88,7 +88,7 @@ FEATURE_SET = 'rich'  # 'rich': all 120 features; 'mfcc': 40 MFCC mean/std featu
 `rich` uses every family in the table below. `mfcc` uses only the MFCC row and skips the other feature extraction. Both modes use the same recordings, evaluation splits and model settings. CNN always uses the same log-mel images.
 
 | Category | Feature | Summary statistics | Count | What it captures | Possible emotional relevance |
-| --- | --- | --- | --- | ---: | --- |
+| --- | --- | --- | ---: | --- | --- |
 | Cepstral | MFCC | Mean/std of 20 coefficients | 40 | Voice timbre and variation in the spectral envelope | Can describe timbre differences across all five emotions; individual coefficients have no simple emotion label. |
 | | Delta MFCC | Std of 20 first-order delta coefficients | 20 | Changes in the spectral envelope over time | May distinguish changing or abrupt delivery from steadier delivery; also captures phonetic changes. |
 | Spectral | Spectral centroid | Mean/std | 2 | Centre of spectral energy; spectral brightness | May describe brighter versus darker delivery; emotion patterns overlap. |
