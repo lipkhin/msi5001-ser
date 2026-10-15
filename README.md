@@ -15,20 +15,6 @@ We compare seven models, ranging from a simple reference baseline and classical 
 
 A key objective is to examine how well the models generalise to different speakers. We compare a stratified group random split, where speakers can appear in both training and testing, with **Leave-One-Speaker-Out (LOSO)** evaluation, where the test speaker is excluded from training. The project documents the progression from a predefined richer-feature baseline with default model settings to validation-based model optimisation, with earlier feature baselines available in the Git history for comparison.
 
-## Models
-
-| Model | Role |
-| --- | --- |
-| DummyClassifier | Reference baseline that ignores the input features |
-| K-Nearest Neighbours (KNN) | Distance-based classifier |
-| Logistic Regression | Linear classifier |
-| Random Forest | Ensemble of decision trees |
-| Support Vector Machine (SVM) | Nonlinear classifier using the default RBF kernel |
-| Multilayer Perceptron (MLP) | Artificial neural network |
-| Convolutional Neural Network (CNN) | Neural network trained on log-mel spectrograms |
-
-Sections 1–8 establish an **untuned model baseline using predefined audio features**. Section 9 implements validation-based hyperparameter tuning; section 10 compares baseline and optimised predictions. The six scikit-learn classifiers retain their default constructor settings, including MLP's 200-iteration limit. The custom CNN uses two convolution layers, Adam, a batch size of 32, and 10 epochs. CUDA is selected automatically when available; the scikit-learn models run on CPU.
-
 ## Running Locally or in Google Colab
 
 ### Local: VS Code
@@ -48,6 +34,20 @@ Sections 1–8 establish an **untuned model baseline using predefined audio feat
 4. Run the required installation cell, then run the remaining sections in order.
 
 Drive downloads are copied to the runtime's local storage. Local CPU execution is also supported.
+
+## Models
+
+| Model | Role |
+| --- | --- |
+| DummyClassifier | Reference baseline that ignores the input features |
+| K-Nearest Neighbours (KNN) | Distance-based classifier |
+| Logistic Regression | Linear classifier |
+| Random Forest | Ensemble of decision trees |
+| Support Vector Machine (SVM) | Nonlinear classifier using the default RBF kernel |
+| Multilayer Perceptron (MLP) | Artificial neural network |
+| Convolutional Neural Network (CNN) | Neural network trained on log-mel spectrograms |
+
+Sections 1–8 establish an **untuned model baseline using predefined audio features**. Section 9 implements validation-based hyperparameter tuning; section 10 compares baseline and optimised predictions. The six scikit-learn classifiers retain their default constructor settings, including MLP's 200-iteration limit. The custom CNN uses two convolution layers, Adam, a batch size of 32, and 10 epochs. CUDA is selected automatically when available; the scikit-learn models run on CPU.
 
 ## Notebook Workflow
 
