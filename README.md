@@ -87,7 +87,7 @@ Select the mode in section 4:
 FEATURE_SET = 'rich'  # 'basic' or 'rich'
 ```
 
-`basic` uses only the MFCC row below and skips the other acoustic feature extraction. `rich` uses every family. Both modes use the same recordings, evaluation splits and training budgets. Both stages start from the selected inputs; classical tuning may select feature subsets within that preset. The former `'mfcc'` selector is now called `'basic'`.
+`basic` uses only the MFCC row below and skips the other acoustic feature extraction. `rich` uses every family. Both modes use the same recordings, evaluation splits and training budgets. Both stages use all features from the selected preset; tuning changes model settings only. The former `'mfcc'` selector is now called `'basic'`.
 
 | Category | Feature | Summary statistics | Count | What it captures | Possible emotional relevance |
 | --- | --- | --- | ---: | --- | --- |
@@ -140,7 +140,7 @@ Extract log-mel at 16 kHz using the existing mel-spectrogram settings. In rich m
 
 Section 4 displays the selected input shapes and plots every CNN channel. Both baseline and tuned CNNs infer the number of input channels automatically. Fit one mean and standard deviation **per channel**, across training recordings, mel bands and time bins. Apply those statistics to the corresponding validation/test inputs; clip zero standard deviations to `1e-8`. Inner validation fits its own training-channel statistics, and the selected CNN's final refit stores statistics from all outer training images.
 
-Re-run sections **4–10** after changing `FEATURE_SET`, so features, scaling, models and results match the selection. Rich adds an explicit view of temporal changes; it is not guaranteed to improve accuracy. Comparing basic and rich changes the inputs for both model families, so it measures the complete feature preset rather than isolating hyperparameter tuning. Baseline-versus-optimised comparisons within one mode keep the available input preset and outer folds fixed; classical tuning may select a feature subset.
+Re-run sections **4–10** after changing `FEATURE_SET`, so features, scaling, models and results match the selection. Rich adds an explicit view of temporal changes; it is not guaranteed to improve accuracy. Comparing basic and rich changes the inputs for both model families, so it measures the complete feature preset rather than isolating hyperparameter tuning. Baseline-versus-optimised comparisons within one mode use the same complete feature preset and outer folds.
 
 ## Evaluation
 
@@ -157,7 +157,7 @@ A second table reports the **unweighted mean ± sample standard deviation (`ddof
 
 ## Model Optimisation & Hyperparameter Tuning
 
-Section 9 jointly selects classical feature groups and model settings, and compares CNN architectures with validation-based training. It preserves the original baseline and uses the same outer test recordings for both stages. DummyClassifier remains unchanged. Improvement is not guaranteed; negative changes are retained.
+Section 9 tunes classical model settings using all features from the selected preset, and compares CNN architectures with validation-based training. It preserves the original baseline and uses the same outer test recordings for both stages. DummyClassifier remains unchanged. Improvement is not guaranteed; negative changes are retained.
 
 ### Validation and model selection
 
@@ -170,36 +170,26 @@ Every outer training split gets its own tuning run: **five random runs and six L
 
 Defaults are `INNER_RANDOM_FOLDS = 4` and `INNER_LOSO_FOLDS = None`. The same inner folds are shared across models. Section 9.2 displays the validation plan and speaker coverage; with full inner LOSO, each AESDD speaker serves as validation in five eligible outer runs. Reducing the inner holdout count is possible but reduces speaker coverage.
 
-Select model settings by **mean inner-validation macro F1**, with accuracy retained alongside it. Each outer fold can select a different configuration. Classical searches use `Pipeline(feature selector, StandardScaler, model)` on raw X. Each inner fold fits its own scaler; the selected pipeline then refits on all outer training clips. CNN channel normalisation is also fitted only on the appropriate training images. Section 6's outer-scaled arrays are not used for inner tuning.
+Select model settings by **mean inner-validation macro F1**, with accuracy retained alongside it. Each outer fold can select a different configuration. Classical searches use `Pipeline(StandardScaler, model)` on raw X, retaining every feature from the selected preset. Each inner fold fits its own scaler; the selected pipeline then refits on all outer training clips. CNN channel normalisation is also fitted only on the appropriate training images. Section 6's outer-scaled arrays are not used for inner tuning.
 
 Outer test results never select parameters, features, checkpoints, learning-rate schedules or refit epochs. Do not choose baseline versus tuned separately for each outer fold using its test score. Further designs made after inspecting outer results remain exploratory until independently confirmed.
 
-### Feature-group selection
+### Inputs used during tuning
 
-Keep `FEATURE_SET = 'basic'` or `'rich'` in section 4. It still controls the predefined inputs for both model families. Classical tuning additionally selects from the feature groups available within that preset:
-
-| Feature-group candidate | Rich-mode count | Purpose |
-| --- | ---: | --- |
-| All available features | 120 | Full predefined representation and default-parameter reference |
-| MFCC | 40 | Test the simpler cepstral representation |
-| MFCC + spectral | 62 | Add spectral brightness, spread, roll-off, flatness and contrast |
-| MFCC + prosodic | 52 | Add pitch, energy, pauses and voicing |
-| All except chroma | 96 | Test whether pitch-class descriptors contribute useful information |
-
-Basic mode has only 40 MFCC features, so all duplicate feature-group candidates collapse to a single option. No unavailable features are extracted or invented. Rich-mode family selection does not change the CNN's three-channel input. Feature groups and model parameters are selected jointly inside inner validation, independently for each model and outer fold. Section 9 records the selected group, count and complete settings.
+Keep `FEATURE_SET = 'basic'` or `'rich'` in section 4. Every classical model uses all **40 MFCC features** in basic mode or all **120 acoustic features** in rich mode, throughout baseline training and optimisation. The feature preset stays fixed across models and outer folds; there is no automatic feature-group selection. The same toggle continues to set the CNN input to log-mel only or log-mel + delta + delta-delta.
 
 ### Implemented searches
 
-The counts below include default-parameter references for classical models. Rich mode has five feature-group options; basic has one.
+The counts below include default-parameter references for classical models. Candidate counts are the same in basic and rich modes.
 
-| Subsection | Model | Model settings searched | Model combinations | Total candidates: basic / rich |
-| --- | --- | --- | ---: | ---: |
-| 9.3 | KNN | k = **3/5/7/9/11**; uniform/distance weighting; Manhattan/Euclidean distance | 20 | 20 / 100 |
-| 9.4 | Logistic Regression | C=1/max_iter=100 reference; C=0.1/1/10 with max_iter=1500 | 4 | 4 / 20 |
-| 9.5 | Random Forest | Six structural configurations: default; depth 10/leaf 2; unrestricted depth/leaf 4; 300 trees/leaf 2; depth 6/leaf 8/max_features=0.5; depth 10/leaf 4/max_features=0.5 | 6 | 6 / 30 |
-| 9.6 | SVM | RBF C=0.01/0.1/1/10/100/1000 × gamma=scale/0.0001/0.001/0.01/0.1; linear C=1/10 | 32 | 32 / 160 |
-| 9.7 | MLP | 100-neuron Adam reference at 200 and 1500 iterations; 32/64-neuron networks × Adam/L-BFGS × alpha=0.0001/0.01/0.1 at up to 1500 iterations | 14 | 14 / 70 |
-| 9.8 | CNN | Compact spatial reference; stronger CNN at LR=0.001; stronger CNN at LR=0.0003 | 3 | 3 / 3 |
+| Subsection | Model | Model settings searched | Candidates per outer split (basic or rich) |
+| --- | --- | --- | ---: |
+| 9.3 | KNN | k = **3/5/7/9/11**; uniform/distance weighting; Manhattan/Euclidean distance | 20 |
+| 9.4 | Logistic Regression | C=1/max_iter=100 reference; C=0.1/1/10 with max_iter=1500 | 4 |
+| 9.5 | Random Forest | Six structural configurations: default; depth 10/leaf 2; unrestricted depth/leaf 4; 300 trees/leaf 2; depth 6/leaf 8/max_features=0.5; depth 10/leaf 4/max_features=0.5 | 6 |
+| 9.6 | SVM | RBF C=0.01/0.1/1/10/100/1000 × gamma=scale/0.0001/0.001/0.01/0.1; linear C=1/10 | 32 |
+| 9.7 | MLP | 100-neuron Adam reference at 200 and 1500 iterations; 32/64-neuron networks × Adam/L-BFGS × alpha=0.0001/0.01/0.1 at up to 1500 iterations | 14 |
+| 9.8 | CNN | Compact spatial reference; stronger CNN at LR=0.001; stronger CNN at LR=0.0003 | 3 |
 
 The first four Random Forest configurations use max_features='sqrt'; all use 100 trees except the explicit 300-tree candidate. RF and MLP tuning use seed 42. MLP's internal random early stopping is disabled so validation stays under the explicit group-aware procedure. L-BFGS does not use Adam's learning-rate setting. Convergence warnings remain visible; allowing more iterations does not guarantee better held-out performance.
 
@@ -234,7 +224,7 @@ The refit's LR schedule is the median recorded inner LR at each refit epoch; sho
 ### Diagnostics and result display
 
 - **Section 8/9.1:** baseline training/test accuracy and macro F1, averaged across outer folds, alongside pooled held-out scores.
-- **Each classical tuning section:** feature-group candidates, complete settings, the top 15 candidates for random outer fold 1, selected settings for every outer fold, and an inner-training versus validation macro F1 graph. Full candidate tables remain in `validation_results`.
+- **Each classical tuning section:** model-parameter candidates, complete settings, the top 15 candidates for random outer fold 1, selected settings for every outer fold, and an inner-training versus validation macro F1 graph. Full candidate tables remain in `validation_results`.
 - **CNN:** training/validation loss and macro F1, LR histories, selected checkpoint/refit epochs and F1 gaps. Curves use the first outer fold and first inner fold of each protocol, fixed independently of outer test performance. Inner training/validation losses and F1 are evaluated in evaluation mode; optimisation loss is retained separately.
 - **Section 10:** pooled baseline/tuned scores and changes, fold mean ± sample standard deviation, and separate per-speaker LOSO accuracy and macro F1 tables.
 
@@ -245,13 +235,13 @@ Pandas displays full settings text and all columns. Training scores are resubsti
 1. Run sections 1–8 for the selected basic/rich preset. Retain the original baseline for learning-progress comparisons.
 2. Review validation and compute settings in **9.2**. `TUNING_JOBS = 1` is the conservative default; larger values parallelise classical searches, while CNN selects CPU/CUDA separately.
 3. Run **9.3–9.8**, then **10**. Re-running 9.2 clears previous tuning state, so re-run the remaining tuning/evaluation cells afterwards.
-4. Re-run **4–10** when changing basic/rich inputs. Within a run, the baseline input preset and outer test clips stay fixed, while classical tuning may select subsets of its available features.
+4. Re-run **4–10** when changing basic/rich inputs. Within a run, every classical model retains all features from the selected preset and the outer test clips stay fixed.
 
-Expanded feature/parameter searches and full inner LOSO require substantially more computation than the compact search. In rich mode there are 380 classical candidates per outer training split, with four or five inner fits per candidate plus refitting. CNN has 150 inner candidate runs across the 11 outer folds, each with up to 100 epochs. CPU execution can be lengthy; GPU acceleration applies to CNN, not the scikit-learn MLP. The notebook is saved without outputs; generate updated nested scores by executing it. Exploratory fixed-epoch CNN results are not hard-coded as final tuned results.
+Model-parameter searches and full inner LOSO require substantial computation. There are 76 classical candidates per outer training split in either preset, with four or five inner fits per candidate plus refitting. CNN has 150 inner candidate runs across the 11 outer folds, each with up to 100 epochs. CPU execution can be lengthy; GPU acceleration applies to CNN, not the scikit-learn MLP. The notebook is saved without outputs; generate updated nested scores by executing it. Exploratory fixed-epoch CNN results are not hard-coded as final tuned results.
 
 ### Further experiments
 
-After recording the predefined search, test feature selection/PCA refinements, mild training-only CNN augmentation, architecture/regularisation ablations and multiple predefined training seeds. Keep related or augmented copies within their source recording's training partition. Select changes through inner validation and retain negative outer-test changes. More diverse speakers may be needed if unseen-speaker performance remains limited.
+After recording the predefined search, test mild training-only CNN augmentation, architecture/regularisation ablations and multiple predefined training seeds. Keep related or augmented copies within their source recording's training partition. Select changes through inner validation and retain negative outer-test changes. More diverse speakers may be needed if unseen-speaker performance remains limited.
 
 
 ## References
@@ -276,6 +266,5 @@ After recording the predefined search, test feature selection/PCA refinements, m
 
 
 
-- [Scikit-learn feature selection](https://scikit-learn.org/stable/modules/feature_selection.html)
 - [Scikit-learn RBF SVM parameter selection](https://scikit-learn.org/stable/auto_examples/svm/plot_rbf_parameters.html)
 - [Scikit-learn MLP practical guidance](https://scikit-learn.org/stable/modules/neural_networks_supervised.html)
