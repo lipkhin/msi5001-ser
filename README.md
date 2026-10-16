@@ -186,12 +186,12 @@ The counts below include reference configurations. Candidate counts are the same
 | --- | --- | --- | ---: |
 | 9.3 | KNN | Grid: k=3/5/7/9/11 × uniform/distance × Manhattan/Euclidean | 20 |
 | 9.4 | Logistic Regression | Grid: C=0.001/0.005/0.01/0.05/0.1/0.5/1/5/10/50/100 at max_iter=1500; separate C=1/max_iter=100 reference | 12 |
-| 9.5 | Random Forest | Grid: n_estimators=100/200/300 × max_depth=None/5/10/20 × min_samples_leaf=1/2/4/8 × max_features=sqrt/0.25/0.5/0.75/1.0 | 240 |
+| 9.5 | Random Forest | Grid: n_estimators=100/200 × max_depth=None/5/10 × min_samples_leaf=1/2/4/8 × max_features=sqrt/0.5/1.0 | 72 |
 | 9.6 | SVM | Grid: 12 C values × 9 gamma values for RBF (108); 12 C values for linear | 120 |
-| 9.7 | PyTorch MLP | Balanced random sampling: 10 settings per architecture across six architectures; one fixed PyTorch reference | 61 |
+| 9.7 | PyTorch MLP | Balanced random sampling: 5 settings per architecture across six architectures; one fixed PyTorch reference | 31 |
 | 9.8 | CNN | Two-layer (32/64), three-layer (32/64/128), four-layer (32/64/128/256), each at LR=0.001/0.0003; shared BatchNorm/Dense/dropout and training protocol | 6 |
 
-**Random Forest:** keep min_samples_split=2 and class_weight=None. The default configuration is already in the grid once. Tree count controls ensemble size; depth and minimum leaf size control complexity; max_features controls feature sampling at each tree split, without removing features from the pipeline. There is no separate min_samples_split grid duplicating equivalent leaf constraints. RF uses seed 42.
+**Random Forest:** keep min_samples_split=2 and class_weight=None. The default configuration is already in the grid once. Tree count controls ensemble size; depth and minimum leaf size control complexity; max_features controls feature sampling at each tree split, without removing features from the pipeline. There is no separate min_samples_split grid duplicating equivalent leaf constraints. RF uses seed 42 and tree-level n_jobs=1. Candidate/fold fits inherit TUNING_JOBS=4, avoiding nested parallelism. The 72 candidates require 3600 inner fits plus 11 selected outer refits across both protocols.
 
 **SVM:** C values are `[0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1, 5, 10, 50, 100, 1000]`. RBF gamma values are `['scale', 0.00001, 0.0001, 0.0005, 0.001, 0.005, 0.01, 0.05, 0.1]`. The linear branch searches C only, avoiding irrelevant gamma evaluations. The default RBF configuration is included.
 
@@ -209,7 +209,7 @@ The **original sklearn MLPClassifier baseline stays unchanged** at default setti
 | Training limit | 1500 Adam epochs or total L-BFGS iterations |
 | Fixed PyTorch reference | `(100,)`, ReLU, Adam, LR=0.001, alpha=0.0001, up to 200 epochs |
 
-There are 240 possible expanded configurations (180 Adam and 60 L-BFGS). `ParameterSampler` draws **10 distinct configurations per architecture without replacement**, using seed 42, guaranteeing all six architectures are tested. Sampling happens once; the same 60 configurations and fixed reference are reused across all outer folds. Singleton parameter grids let the existing `GridSearchCV` runner evaluate **only the 61 predefined candidates** using shared explicit CV, scoring, diagnostics and one selected refit. This is balanced randomised search, not exhaustive evaluation of all 241 possibilities. L-BFGS does not vary Adam's learning rate. The fixed PyTorch reference uses sklearn-like default hyperparameters but is not numerically equivalent to sklearn's implementation.
+There are 240 possible expanded configurations (180 Adam and 60 L-BFGS). `ParameterSampler` draws **5 distinct configurations per architecture without replacement**, using seed 42, guaranteeing all six architectures are tested. Sampling happens once; the same 30 configurations and fixed reference are reused across all outer folds. Singleton parameter grids let the existing `GridSearchCV` runner evaluate **only the 31 predefined candidates** using shared explicit CV, scoring, diagnostics and one selected refit. This is balanced randomised search, not exhaustive evaluation of all 241 possibilities. Architecture coverage is guaranteed, but sampled solver/activation/regularisation coverage is not. With the default seed 42 and five samples per architecture, the current sampler selects Adam only; L-BFGS remains in the available search space. Inspect the displayed candidate table for actual coverage. L-BFGS does not vary Adam's learning rate. The fixed PyTorch reference uses sklearn-like default hyperparameters but is not numerically equivalent to sklearn's implementation.
 
 The explicit objective is **mean cross-entropy + alpha/(2 × N_train) × sum of squared weight matrices**. Biases are excluded and Adam weight_decay is zero. The alpha values therefore have a defined interpretation; copying them directly into weight_decay is avoided. This is a sklearn-inspired objective, not identical sklearn minibatch behaviour. Initialisation, optimisers and convergence behaviour also differ between frameworks.
 
@@ -261,11 +261,11 @@ Pandas displays full settings text and all columns. Training scores are resubsti
 ### Running optimisation
 
 1. Run sections 1–8 for the selected basic/rich preset. Retain the original baseline for learning-progress comparisons.
-2. Review shared CNN/inner-fold settings in **7**, and search compute settings in **9.2**. `TUNING_JOBS = 1` is the conservative default; larger values parallelise classical searches. Tuned PyTorch MLP always uses one fitting job; MLP and CNN select CPU/CUDA separately.
+2. Review shared CNN/inner-fold settings in **7**, and search compute settings in **9.2**. `TUNING_JOBS = 4` runs up to four classical candidate/fold fits concurrently. RF keeps its own n_jobs=1; reduce the shared job count if CPU/RAM capacity is limited. Tuned PyTorch MLP always uses one fitting job; MLP and CNN select CPU/CUDA separately.
 3. Run **9.3–9.8**, then **10**. Re-running 9.2 clears previous tuning state, so re-run the remaining tuning/evaluation cells afterwards.
 4. Re-run **4–10** when changing basic/rich inputs. Within a run, every classical model retains all features from the selected preset and the outer test clips stay fixed.
 
-Model-parameter searches and full inner LOSO require substantial computation. There are 392 classical grid candidates and 61 PyTorch MLP candidates per outer training split in either preset (453 total). With five random outer folds × four inner folds and six LOSO outer folds × five inner holdouts, these require 22650 inner fits, plus 55 selected refits. The MLP contributes 3050 inner fits plus 11 selected refits; a full 241-candidate MLP grid would require 12050 inner fits. CNN tuning has 300 inner candidate runs across the 11 outer folds, each with up to 100 epochs, plus 11 selected refits. The predefined baseline adds 50 inner calibration runs and 11 fresh refits using the same protocol. CPU execution can be lengthy; GPU acceleration applies to CNN and tuned PyTorch MLP; baseline sklearn MLP stays on CPU. The notebook is saved without outputs; generate updated nested scores by executing it. Exploratory fixed-epoch CNN results are not hard-coded as final tuned results.
+Model-parameter searches and full inner LOSO require substantial computation. There are 224 classical grid candidates and 31 PyTorch MLP candidates per outer training split in either preset (255 total). With five random outer folds × four inner folds and six LOSO outer folds × five inner holdouts, these require 12750 inner fits, plus 55 selected refits. The MLP contributes 1550 inner fits plus 11 selected refits; a full 241-candidate MLP grid would require 12050 inner fits. CNN tuning has 300 inner candidate runs across the 11 outer folds, each with up to 100 epochs, plus 11 selected refits. The predefined baseline adds 50 inner calibration runs and 11 fresh refits using the same protocol. CPU execution can be lengthy; GPU acceleration applies to CNN and tuned PyTorch MLP; baseline sklearn MLP stays on CPU. The notebook is saved without outputs; generate updated nested scores by executing it. Exploratory fixed-epoch CNN results are not hard-coded as final tuned results.
 
 ### Further experiments
 
@@ -301,4 +301,5 @@ After recording the predefined search, test mild training-only CNN augmentation,
 - [Scikit-learn ParameterSampler](https://scikit-learn.org/stable/modules/generated/sklearn.model_selection.ParameterSampler.html)
 - [PyTorch L-BFGS](https://docs.pytorch.org/docs/stable/generated/torch.optim.LBFGS.html)
 - [PyTorch Adam](https://docs.pytorch.org/docs/stable/generated/torch.optim.Adam.html)
+
 
