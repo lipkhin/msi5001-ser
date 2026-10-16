@@ -170,9 +170,7 @@ Every outer training split gets its own tuning run: **five random runs and six L
 
 Defaults, defined in section 7 and reused in 9.2, are `INNER_RANDOM_FOLDS = 4` and `INNER_LOSO_FOLDS = None`. The same inner folds are shared across models. Section 9.2 displays the validation plan and speaker coverage; with full inner LOSO, each AESDD speaker serves as validation in five eligible outer runs. Reducing the inner holdout count is possible but reduces speaker coverage.
 
-Select model settings by **mean inner-validation macro F1**, with accuracy retained alongside it. Each outer fold can select a different configuration. Feature-vector searches use `Pipeline(StandardScaler, model)` on raw X, retaining every feature from the selected preset. KNN, Logistic Regression, Random Forest and SVM use exhaustive grids. Tuned MLP uses a cloneable PyTorch estimator and balanced random sampling. Each inner fold fits its own scaler; the selected pipeline then refits on all outer training clips. CNN channel normalisation is also fitted only on the appropriate training images. Section 6's outer-scaled arrays are not used for inner tuning.
-
-Outer test results never select parameters, features, checkpoints, learning-rate schedules or refit epochs. Do not choose baseline versus tuned separately for each outer fold using its test score. Further designs made after inspecting outer results remain exploratory until independently confirmed.
+Select model settings by **mean inner-validation macro F1**, with accuracy retained alongside it. Each outer fold can select a different configuration. Feature-vector searches use `Pipeline(StandardScaler, model)` on raw X, retaining every feature from the selected preset. KNN, Logistic Regression, Random Forest and SVM use exhaustive grids. Tuned MLP uses a cloneable PyTorch estimator and balanced random sampling. Each inner fold fits its own scaler; the selected pipeline then refits on all outer training clips. CNN channel normalisation is also fitted only on the appropriate training images.
 
 ### Inputs used during tuning
 
@@ -180,20 +178,16 @@ Keep `FEATURE_SET = 'basic'` or `'rich'` in section 4. Every classical model use
 
 ### Implemented searches
 
-Candidate counts are the same in basic and rich modes. Sklearn baseline constructors remain unchanged. Logistic Regression has no separate 100-iteration reference; PyTorch MLP has no extra fixed reference. The CNN baseline is a predefined, validation-calibrated 16/32-channel model, evaluated separately from the two larger tuning candidates.
+Candidate counts are the same in basic and rich modes. Sklearn baseline constructors remain unchanged. The CNN baseline is a predefined, validation-calibrated 16/32-channel model, evaluated separately from the two larger tuning candidates.
 
 | Subsection | Model | Search and settings | Candidates per outer split |
 | --- | --- | --- | ---: |
 | 9.3 | KNN | Grid: k=3/5/7/9/11 × uniform/distance × Manhattan/Euclidean | 20 |
-| 9.4 | Logistic Regression | Grid: C=0.001/0.005/0.01/0.05/0.1/0.5/1/5/10/50/100/200, all at max_iter=1500; no separate reference | 12 |
+| 9.4 | Logistic Regression | Grid: C=0.001/0.005/0.01/0.05/0.1/0.5/1/5/10/50/100/200, all at max_iter=1500 | 12 |
 | 9.5 | Random Forest | Grid: n_estimators=100/200 × max_depth=None/10/20 × min_samples_leaf=1/2/4 × max_features=sqrt/0.5/1.0 | 54 |
 | 9.6 | SVM | Grid: 10 C values × 7 gamma values for RBF (70); 10 C values for linear | 80 |
-| 9.7 | PyTorch MLP | Balanced random sampling: 3 Adam + 3 L-BFGS settings per architecture across four architectures; no extra reference | 24 |
+| 9.7 | PyTorch MLP | Balanced random sampling: 3 Adam + 3 L-BFGS settings per architecture across four architectures | 24 |
 | 9.8 | CNN | Two-layer (32/64, Dense 128) or three-layer (32/64/128, Dense 256); both start at LR=0.001, with shared BatchNorm/dropout and training protocol | 2 |
-
-**Random Forest:** keep min_samples_split=2 and class_weight=None. The default configuration is already in the grid once. Tree count controls ensemble size; depth and minimum leaf size control complexity; max_features controls feature sampling at each tree split, without removing features from the pipeline. There is no separate min_samples_split grid duplicating equivalent leaf constraints. RF uses seed 42 and tree-level n_jobs=1. Candidate/fold fits inherit TUNING_JOBS=6, avoiding nested parallelism. The 54 candidates require 2700 inner fits plus 11 selected outer refits across both protocols.
-
-**SVM:** C values are `[0.01, 0.05, 0.1, 0.5, 1, 5, 10, 50, 100, 1000]`. RBF gamma values are `['scale', 0.00001, 0.0001, 0.0005, 0.001, 0.005, 0.01]`. The linear branch searches C only, avoiding irrelevant gamma evaluations. The default RBF configuration is included.
 
 ### PyTorch MLP architecture and randomised search
 
