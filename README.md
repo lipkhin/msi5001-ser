@@ -258,7 +258,7 @@ Pandas displays full settings text and all columns. Training scores are resubsti
 ### Running optimisation
 
 1. Run sections 1–8 for the selected basic/rich preset. Retain the original baseline for learning-progress comparisons.
-2. Review shared CNN/inner-fold settings in **7**, and search compute settings in **9.2**. `TUNING_JOBS = 6` runs up to six classical candidate/fold fits concurrently. RF keeps its own n_jobs=1; reduce the shared job count if CPU/RAM capacity is limited. Tuned PyTorch MLP always uses one fitting job; MLP and CNN select CPU/CUDA separately.
+2. Review shared CNN/inner-fold settings in **7**, and search compute settings in **9.2**. `TUNING_JOBS = 2` runs up to two classical candidate/fold fits concurrently. RF keeps its own n_jobs=1; reduce the shared job count if CPU/RAM capacity is limited. Tuned PyTorch MLP always uses one fitting job; MLP and CNN select CPU/CUDA separately.
 3. Run **9.3–9.8**, then **10**. Re-running 9.2 clears previous tuning state, so re-run the remaining tuning/evaluation cells afterwards.
 4. Re-run **4–10** when changing basic/rich inputs. Within a run, every classical model retains all features from the selected preset and the outer test clips stay fixed.
 
