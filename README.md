@@ -191,9 +191,9 @@ Candidate counts are the same in basic and rich modes. Sklearn baseline construc
 
 ### PyTorch MLP architecture and randomised search
 
-Baseline and optimisation now use the **same PyTorch MLP implementation**. Section 7 defines the shared cloneable estimator and fits a fixed configuration: `(100,)`, ReLU, Adam, alpha=0.0001 and initial LR=0.001. Both stages share `MLP_MAX_ITER=1500`, `MLP_DEVICE='auto'`, batches of min(200, N_train), training-loss tolerance 0.0001 and patience 10 for Adam. Section 9.7 reuses the class and shared settings rather than redefining them. No skorch dependency is required.
+Baseline and optimisation use the **same PyTorch MLP implementation**. Section 7 defines the shared cloneable estimator and fits a fixed configuration: `(100,)`, ReLU, Adam, alpha=0.0001 and initial LR=0.001. Both stages share `MLP_MAX_ITER=1500`, `MLP_DEVICE='auto'`, batches of min(200, N_train), training-loss tolerance 0.0001 and patience 10 for Adam. Section 9.7 reuses the class and shared settings rather than redefining them. No skorch dependency is required.
 
-The baseline uses scaled outer-training features; tuning fits a separate scaler inside each inner-training fold and refits its selected pipeline on all outer training clips. Training-loss stopping creates no internal validation holdout. Earlier sklearn MLP baseline results are historical and must not be reused as scores for this revised baseline. **Rerun sections 7–10**, including the shared class cell, to generate the current comparison.
+The baseline uses scaled outer-training features; tuning fits a separate scaler inside each inner-training fold and refits its selected pipeline on all outer training clips. Training-loss stopping creates no internal validation holdout.
 
 | Setting | Search space |
 | --- | --- |
@@ -210,11 +210,11 @@ The explicit objective is **mean cross-entropy + alpha/(2 × N_train) × sum of 
 
 Adam uses shuffled batches of min(200, N_train), and training-loss convergence with tolerance 0.0001 and patience 10; max_iter is an upper epoch limit. L-BFGS runs one full-batch closure-based solve with a total max_iter limit, max_eval=15000, initial step size 1.0, strong-Wolfe line search, gradient tolerance 0.0001 and change tolerance 1e-9. It does not multiply 1500 epochs by 1500 internal iterations. Budget warnings remain visible. Neither solver creates an internal random validation split or monitors outer test data. Every CV fit and selected outer refit starts with fresh weights.
 
-`MLP_DEVICE='auto'` selects CUDA if available, otherwise CPU; `'cpu'` or `'cuda'` can be requested explicitly. MLP baseline fits and tuning use **one fitting job**, regardless of TUNING_JOBS. GPU fitting may not be faster for roughly 604 small feature vectors and does not inherently improve accuracy. Finished models are moved to CPU to release GPU allocations, and small tabular predictions run on CPU. Local and Colab use the same code; install a suitable CUDA-enabled PyTorch build locally or choose a Colab GPU runtime.
+`MLP_DEVICE='auto'` selects CUDA if available, otherwise CPU; `'cpu'` or `'cuda'` can be requested explicitly. MLP baseline fits and tuning use **one fitting job**, regardless of TUNING_JOBS. Finished models are moved to CPU to release GPU allocations, and small tabular predictions run on CPU. Local and Colab use the same code; install a suitable CUDA-enabled PyTorch build locally or choose a Colab GPU runtime.
 
 ### CNN architecture and training
 
-The section 7 **predefined CNN baseline** now uses Conv 16/32 with BatchNorm and ReLU after each convolution, 2×2 max pooling after both convolutions, 4×4 adaptive average pooling, Flatten, Dense 64, ReLU, Dropout 0.4 and five output logits. Convolutions use 3×3 kernels, stride 1, padding 1 and bias=False before BatchNorm. Its fixed Adam settings are initial LR=0.001, weight_decay=0.0001 and batch size 32.
+The section 7 **predefined CNN baseline** uses Conv 16/32 with BatchNorm and ReLU after each convolution, 2×2 max pooling after both convolutions, 4×4 adaptive average pooling, Flatten, Dense 64, ReLU, Dropout 0.4 and five output logits. Convolutions use 3×3 kernels, stride 1, padding 1 and bias=False before BatchNorm. Its fixed Adam settings are initial LR=0.001, weight_decay=0.0001 and batch size 32.
 
 The baseline and tuned CNNs share normalisation rules and a **50-epoch upper limit**, plus checkpointing, stopping and LR scheduling. The baseline fixes its architecture and initial learning rate; tuning compares two larger configurations:
 
@@ -242,7 +242,7 @@ For the baseline and every tuning candidate, each inner fold fits channel normal
 
 Both stages then fit **fresh weights** on all outer training clips for the rounded-up median inner best epoch and the median inner learning-rate schedule. Shorter LR histories extend their last rate. No outer test data select settings, stopping, checkpoints or refit duration. The 50-epoch limit is shared; **actual stopping/checkpoint/refit epochs may differ**. A checkpoint/refit may occur before epoch 20. Thus the CNN baseline is validation-calibrated, rather than an untuned fixed-epoch model.
 
-Section 7 reports baseline inner checkpoint/refit epochs and stores its histories/bundles in `baseline_cnn_bundles`. Section 9 verifies shared settings/inner folds have not changed. Finished CNNs are stored on CPU and transferred for prediction as needed. **Rerun sections 7–10** when changing these shared settings. Earlier CNN baseline scores came from a different architecture/training definition and must not be reused.
+Section 7 reports baseline inner checkpoint/refit epochs and stores its histories/bundles in `baseline_cnn_bundles`. Section 9 verifies shared settings/inner folds have not changed. Finished CNNs are stored on CPU and transferred for prediction as needed. **Rerun sections 7–10** when changing these shared settings.
 
 ### Diagnostics and result display
 
@@ -263,11 +263,6 @@ Pandas displays full settings text and all columns. Training scores are resubsti
 4. Re-run **4–10** when changing basic/rich inputs. Within a run, every classical model retains all features from the selected preset and the outer test clips stay fixed.
 
 Model-parameter searches and full inner LOSO require substantial computation. There are 166 classical grid candidates and 24 PyTorch MLP candidates per outer training split in either preset (190 total). With five random outer folds × four inner folds and six LOSO outer folds × five inner holdouts, these require 9500 inner fits, plus 55 selected refits. The MLP contributes 1200 inner fits plus 11 selected refits; a full 120-candidate MLP grid would require 6000 inner fits. CNN tuning has 100 inner candidate runs across the 11 outer folds, each with up to 50 epochs, plus 11 selected refits. The predefined baseline adds 50 inner calibration runs and 11 fresh refits using the same protocol. CPU execution can be lengthy; GPU acceleration applies to CNN and both baseline/tuned PyTorch MLP; the five sklearn baselines stay on CPU. The notebook is saved without outputs; generate updated nested scores by executing it. Exploratory fixed-epoch CNN results are not hard-coded as final tuned results.
-
-### Further experiments
-
-After recording the predefined search, test mild training-only CNN augmentation, architecture/regularisation ablations and multiple predefined training seeds. Keep related or augmented copies within their source recording's training partition. Select changes through inner validation and retain negative outer-test changes. More diverse speakers may be needed if unseen-speaker performance remains limited.
-
 
 ## References
 
