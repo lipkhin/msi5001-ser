@@ -29,7 +29,7 @@ A key objective is to examine how well the models generalise to different speake
 ### Google Colab
 
 1. Open the notebook from this repository in Colab.
-2. Select a GPU runtime if required for CNN training.
+2. Select a GPU runtime for CNN and tuned PyTorch MLP training if required.
 3. Set `SOURCE = 'drive'` and paste your public dataset folder or ZIP URL into `DRIVE_URL`. The sharing setting must allow **Anyone with the link → Viewer**.
 4. Run the required installation cell, then run the remaining sections in order.
 
@@ -47,7 +47,7 @@ Drive downloads are copied to the runtime's local storage. Local CPU execution i
 | Multilayer Perceptron (MLP) | Artificial neural network |
 | Convolutional Neural Network (CNN) | Neural network trained on log-mel inputs, with temporal derivatives in rich mode |
 
-Sections 1–8 establish an **untuned model baseline using predefined audio features**. Section 9 implements validation-based hyperparameter tuning; section 10 compares baseline and optimised predictions. The six scikit-learn classifiers retain their default constructor settings, including MLP's 200-iteration limit. The custom CNN uses two convolution layers, Adam, a batch size of 32, and 10 epochs. CUDA is selected automatically when available; the scikit-learn models run on CPU.
+Sections 1–8 establish an **untuned model baseline using predefined audio features**. Section 9 implements validation-based hyperparameter tuning; section 10 compares baseline and optimised predictions. The six scikit-learn classifiers retain their default constructor settings, including MLP's 200-iteration limit. The custom CNN uses two convolution layers, Adam, a batch size of 32, and 10 epochs. CUDA is selected automatically for CNN and the tuned PyTorch MLP when available. The six baseline scikit-learn models, including the original MLP, run on CPU.
 
 ## Notebook Workflow
 
@@ -170,7 +170,7 @@ Every outer training split gets its own tuning run: **five random runs and six L
 
 Defaults are `INNER_RANDOM_FOLDS = 4` and `INNER_LOSO_FOLDS = None`. The same inner folds are shared across models. Section 9.2 displays the validation plan and speaker coverage; with full inner LOSO, each AESDD speaker serves as validation in five eligible outer runs. Reducing the inner holdout count is possible but reduces speaker coverage.
 
-Select model settings by **mean inner-validation macro F1**, with accuracy retained alongside it. Each outer fold can select a different configuration. Classical searches use `Pipeline(StandardScaler, model)` on raw X, retaining every feature from the selected preset. Each inner fold fits its own scaler; the selected pipeline then refits on all outer training clips. CNN channel normalisation is also fitted only on the appropriate training images. Section 6's outer-scaled arrays are not used for inner tuning.
+Select model settings by **mean inner-validation macro F1**, with accuracy retained alongside it. Each outer fold can select a different configuration. Feature-vector searches use `Pipeline(StandardScaler, model)` on raw X, retaining every feature from the selected preset. KNN, Logistic Regression, Random Forest and SVM use exhaustive grids. Tuned MLP uses a cloneable PyTorch estimator and balanced random sampling. Each inner fold fits its own scaler; the selected pipeline then refits on all outer training clips. CNN channel normalisation is also fitted only on the appropriate training images. Section 6's outer-scaled arrays are not used for inner tuning.
 
 Outer test results never select parameters, features, checkpoints, learning-rate schedules or refit epochs. Do not choose baseline versus tuned separately for each outer fold using its test score. Further designs made after inspecting outer results remain exploratory until independently confirmed.
 
@@ -180,18 +180,42 @@ Keep `FEATURE_SET = 'basic'` or `'rich'` in section 4. Every classical model use
 
 ### Implemented searches
 
-The counts below include default-parameter references for classical models. Candidate counts are the same in basic and rich modes.
+The counts below include reference configurations. Candidate counts are the same in basic and rich modes. Baseline models in sections 1–8 remain unchanged.
 
-| Subsection | Model | Model settings searched | Candidates per outer split (basic or rich) |
+| Subsection | Model | Search and settings | Candidates per outer split |
 | --- | --- | --- | ---: |
-| 9.3 | KNN | k = **3/5/7/9/11**; uniform/distance weighting; Manhattan/Euclidean distance | 20 |
-| 9.4 | Logistic Regression | C=1/max_iter=100 reference; C=0.1/1/10 with max_iter=1500 | 4 |
-| 9.5 | Random Forest | Six structural configurations: default; depth 10/leaf 2; unrestricted depth/leaf 4; 300 trees/leaf 2; depth 6/leaf 8/max_features=0.5; depth 10/leaf 4/max_features=0.5 | 6 |
-| 9.6 | SVM | RBF C=0.01/0.1/1/10/100/1000 × gamma=scale/0.0001/0.001/0.01/0.1; linear C=1/10 | 32 |
-| 9.7 | MLP | 100-neuron Adam reference at 200 and 1500 iterations; 32/64-neuron networks × Adam/L-BFGS × alpha=0.0001/0.01/0.1 at up to 1500 iterations | 14 |
+| 9.3 | KNN | Grid: k=3/5/7/9/11 × uniform/distance × Manhattan/Euclidean | 20 |
+| 9.4 | Logistic Regression | Grid: C=0.001/0.005/0.01/0.05/0.1/0.5/1/5/10/50/100 at max_iter=1500; separate C=1/max_iter=100 reference | 12 |
+| 9.5 | Random Forest | Grid: n_estimators=100/200/300 × max_depth=None/5/10/20 × min_samples_leaf=1/2/4/8 × max_features=sqrt/0.25/0.5/0.75/1.0 | 240 |
+| 9.6 | SVM | Grid: 12 C values × 9 gamma values for RBF (108); 12 C values for linear | 120 |
+| 9.7 | PyTorch MLP | Balanced random sampling: 10 settings per architecture across six architectures; one fixed PyTorch reference | 61 |
 | 9.8 | CNN | Compact spatial reference; stronger CNN at LR=0.001; stronger CNN at LR=0.0003 | 3 |
 
-The first four Random Forest configurations use max_features='sqrt'; all use 100 trees except the explicit 300-tree candidate. RF and MLP tuning use seed 42. MLP's internal random early stopping is disabled so validation stays under the explicit group-aware procedure. L-BFGS does not use Adam's learning-rate setting. Convergence warnings remain visible; allowing more iterations does not guarantee better held-out performance.
+**Random Forest:** keep min_samples_split=2 and class_weight=None. The default configuration is already in the grid once. Tree count controls ensemble size; depth and minimum leaf size control complexity; max_features controls feature sampling at each tree split, without removing features from the pipeline. There is no separate min_samples_split grid duplicating equivalent leaf constraints. RF uses seed 42.
+
+**SVM:** C values are `[0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1, 5, 10, 50, 100, 1000]`. RBF gamma values are `['scale', 0.00001, 0.0001, 0.0005, 0.001, 0.005, 0.01, 0.05, 0.1]`. The linear branch searches C only, avoiding irrelevant gamma evaluations. The default RBF configuration is included.
+
+### PyTorch MLP architecture and randomised search
+
+The **original sklearn MLPClassifier baseline stays unchanged** at default settings, including its 200-iteration limit and CPU execution. Section 9.7 tunes a separately implemented PyTorch MLP. This comparison changes both framework and hyperparameters; differences cannot be attributed to hyperparameter tuning alone. No skorch dependency is required: the notebook supplies a cloneable sklearn-compatible estimator using the existing PyTorch installation.
+
+| Setting | Search space |
+| --- | --- |
+| Hidden layers | `(64,)`, `(128,)`, `(256,)`, `(128, 64)`, `(256, 128)`, `(128, 64, 32)` |
+| Activation | ReLU, tanh |
+| Optimiser | Adam or full-batch L-BFGS |
+| L2 alpha | 0.0001, 0.001, 0.01, 0.1, 1.0 |
+| Adam learning rate | 0.0003, 0.001, 0.003 |
+| Training limit | 1500 Adam epochs or total L-BFGS iterations |
+| Fixed PyTorch reference | `(100,)`, ReLU, Adam, LR=0.001, alpha=0.0001, up to 200 epochs |
+
+There are 240 possible expanded configurations (180 Adam and 60 L-BFGS). `ParameterSampler` draws **10 distinct configurations per architecture without replacement**, using seed 42, guaranteeing all six architectures are tested. Sampling happens once; the same 60 configurations and fixed reference are reused across all outer folds. Singleton parameter grids let the existing `GridSearchCV` runner evaluate **only the 61 predefined candidates** using shared explicit CV, scoring, diagnostics and one selected refit. This is balanced randomised search, not exhaustive evaluation of all 241 possibilities. L-BFGS does not vary Adam's learning rate. The fixed PyTorch reference uses sklearn-like default hyperparameters but is not numerically equivalent to sklearn's implementation.
+
+The explicit objective is **mean cross-entropy + alpha/(2 × N_train) × sum of squared weight matrices**. Biases are excluded and Adam weight_decay is zero. The alpha values therefore have a defined interpretation; copying them directly into weight_decay is avoided. This is a sklearn-inspired objective, not identical sklearn minibatch behaviour. Initialisation, optimisers and convergence behaviour also differ between frameworks.
+
+Adam uses shuffled batches of min(200, N_train), and training-loss convergence with tolerance 0.0001 and patience 10; max_iter is an upper epoch limit. L-BFGS runs one full-batch closure-based solve with a total max_iter limit, max_eval=15000, initial step size 1.0, strong-Wolfe line search, gradient tolerance 0.0001 and change tolerance 1e-9. It does not multiply 1500 epochs by 1500 internal iterations. Budget warnings remain visible. Neither solver creates an internal random validation split or monitors outer test data. Every CV fit and selected outer refit starts with fresh weights.
+
+`MLP_DEVICE='auto'` selects CUDA if available, otherwise CPU; `'cpu'` or `'cuda'` can be requested explicitly. MLP tuning always uses **one fitting job**, regardless of TUNING_JOBS. GPU fitting may not be faster for roughly 604 small feature vectors and does not inherently improve accuracy. Finished models are moved to CPU to release GPU allocations, and small tabular predictions run on CPU. Local and Colab use the same code; install a suitable CUDA-enabled PyTorch build locally or choose a Colab GPU runtime.
 
 ### CNN architecture and training
 
@@ -233,11 +257,11 @@ Pandas displays full settings text and all columns. Training scores are resubsti
 ### Running optimisation
 
 1. Run sections 1–8 for the selected basic/rich preset. Retain the original baseline for learning-progress comparisons.
-2. Review validation and compute settings in **9.2**. `TUNING_JOBS = 1` is the conservative default; larger values parallelise classical searches, while CNN selects CPU/CUDA separately.
+2. Review validation and compute settings in **9.2**. `TUNING_JOBS = 1` is the conservative default; larger values parallelise classical searches. Tuned PyTorch MLP always uses one fitting job; MLP and CNN select CPU/CUDA separately.
 3. Run **9.3–9.8**, then **10**. Re-running 9.2 clears previous tuning state, so re-run the remaining tuning/evaluation cells afterwards.
 4. Re-run **4–10** when changing basic/rich inputs. Within a run, every classical model retains all features from the selected preset and the outer test clips stay fixed.
 
-Model-parameter searches and full inner LOSO require substantial computation. There are 76 classical candidates per outer training split in either preset, with four or five inner fits per candidate plus refitting. CNN has 150 inner candidate runs across the 11 outer folds, each with up to 100 epochs. CPU execution can be lengthy; GPU acceleration applies to CNN, not the scikit-learn MLP. The notebook is saved without outputs; generate updated nested scores by executing it. Exploratory fixed-epoch CNN results are not hard-coded as final tuned results.
+Model-parameter searches and full inner LOSO require substantial computation. There are 392 classical grid candidates and 61 PyTorch MLP candidates per outer training split in either preset (453 total). With five random outer folds × four inner folds and six LOSO outer folds × five inner holdouts, these require 22650 inner fits, plus 55 selected refits. The MLP contributes 3050 inner fits plus 11 selected refits; a full 241-candidate MLP grid would require 12050 inner fits. CNN has 150 inner candidate runs across the 11 outer folds, each with up to 100 epochs. CPU execution can be lengthy; GPU acceleration applies to CNN and tuned PyTorch MLP; baseline sklearn MLP stays on CPU. The notebook is saved without outputs; generate updated nested scores by executing it. Exploratory fixed-epoch CNN results are not hard-coded as final tuned results.
 
 ### Further experiments
 
@@ -268,3 +292,8 @@ After recording the predefined search, test mild training-only CNN augmentation,
 
 - [Scikit-learn RBF SVM parameter selection](https://scikit-learn.org/stable/auto_examples/svm/plot_rbf_parameters.html)
 - [Scikit-learn MLP practical guidance](https://scikit-learn.org/stable/modules/neural_networks_supervised.html)
+
+
+- [Scikit-learn ParameterSampler](https://scikit-learn.org/stable/modules/generated/sklearn.model_selection.ParameterSampler.html)
+- [PyTorch L-BFGS](https://docs.pytorch.org/docs/stable/generated/torch.optim.LBFGS.html)
+- [PyTorch Adam](https://docs.pytorch.org/docs/stable/generated/torch.optim.Adam.html)
