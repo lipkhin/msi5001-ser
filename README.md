@@ -47,7 +47,7 @@ Drive downloads are copied to the runtime's local storage. Local CPU execution i
 | Multilayer Perceptron (MLP) | Artificial neural network |
 | Convolutional Neural Network (CNN) | Neural network trained on log-mel inputs, with temporal derivatives in rich mode |
 
-Sections 1–8 establish a **predefined baseline using audio features**. The six sklearn models use default settings; CNN uses a fixed architecture with training duration calibrated by inner validation. Section 9 implements validation-based hyperparameter tuning; section 10 compares baseline and optimised predictions. The six scikit-learn classifiers retain their default constructor settings, including MLP's 200-iteration limit. The predefined CNN uses two convolution layers (16/32 channels), BatchNorm, Dense 64, dropout 0.4, Adam LR=0.001 and weight_decay=0.0001, batch size 32, and the same 100-epoch maximum/checkpoint/stopping rules as tuned CNNs. CUDA is selected automatically for CNN and the tuned PyTorch MLP when available. The six baseline scikit-learn models, including the original MLP, run on CPU.
+Sections 1–8 establish a **predefined baseline using audio features**. The six sklearn models use default settings; CNN uses a fixed architecture with training duration calibrated by inner validation. Section 9 implements validation-based hyperparameter tuning; section 10 compares baseline and optimised predictions. The six scikit-learn classifiers retain their default constructor settings, including MLP's 200-iteration limit. The predefined CNN uses two convolution layers (16/32 channels), BatchNorm, Dense 64, dropout 0.4, Adam LR=0.001 and weight_decay=0.0001, batch size 32, and the same 50-epoch maximum/checkpoint/stopping rules as tuned CNNs. CUDA is selected automatically for CNN and the tuned PyTorch MLP when available. The six baseline scikit-learn models, including the original MLP, run on CPU.
 
 ## Notebook Workflow
 
@@ -220,7 +220,7 @@ Adam uses shuffled batches of min(200, N_train), and training-loss convergence w
 
 The section 7 **predefined CNN baseline** now uses Conv 16/32 with BatchNorm and ReLU after each convolution, 2×2 max pooling after both convolutions, 4×4 adaptive average pooling, Flatten, Dense 64, ReLU, Dropout 0.4 and five output logits. Convolutions use 3×3 kernels, stride 1, padding 1 and bias=False before BatchNorm. Its fixed Adam settings are initial LR=0.001, weight_decay=0.0001 and batch size 32.
 
-The baseline and tuned CNNs share normalisation rules and a **100-epoch upper limit**, plus checkpointing, stopping and LR scheduling. The baseline fixes its architecture and initial learning rate; tuning compares two larger configurations:
+The baseline and tuned CNNs share normalisation rules and a **50-epoch upper limit**, plus checkpointing, stopping and LR scheduling. The baseline fixes its architecture and initial learning rate; tuning compares two larger configurations:
 
 | Stage | Channels | Initial learning rate | BatchNorm | Hidden dense | Dropout |
 | --- | --- | --- | --- | --- | --- |
@@ -234,7 +234,7 @@ Shared settings are defined in **section 7**, then reused by section 9.2 and 9.8
 
 | Setting | Default | Role |
 | --- | ---: | --- |
-| `CNN_MAX_EPOCHS` | 100 | Shared upper limit per inner training run |
+| `CNN_MAX_EPOCHS` | 50 | Shared upper limit per inner training run |
 | `CNN_MIN_EPOCHS` | 20 | Delay stopping; does not prevent an earlier best checkpoint |
 | `CNN_PATIENCE` | 15 | Non-improving validation-loss epochs before stopping, after the minimum duration |
 | `CNN_LR_PATIENCE` | 5 | ReduceLROnPlateau halves LR after its patience is exceeded |
@@ -242,9 +242,9 @@ Shared settings are defined in **section 7**, then reused by section 9.2 and 9.8
 | `INNER_RANDOM_FOLDS` | 4 | Shared group-aware random validation folds |
 | `INNER_LOSO_FOLDS` | None | Validate on all remaining speakers |
 
-For the baseline and every tuning candidate, each inner fold fits channel normalisation **only on inner training images**, trains up to 100 epochs and restores a copied lowest-validation-loss checkpoint. Checkpoint improvement and LR scheduling use the same absolute threshold 0.0001. For the baseline, no architecture/LR is searched: validation calibrates duration and the LR schedule only. In tuning, mean checkpoint macro F1 selects the configuration, with candidate order resolving ties.
+For the baseline and every tuning candidate, each inner fold fits channel normalisation **only on inner training images**, trains up to 50 epochs and restores a copied lowest-validation-loss checkpoint. Checkpoint improvement and LR scheduling use the same absolute threshold 0.0001. For the baseline, no architecture/LR is searched: validation calibrates duration and the LR schedule only. In tuning, mean checkpoint macro F1 selects the configuration, with candidate order resolving ties.
 
-Both stages then fit **fresh weights** on all outer training clips for the rounded-up median inner best epoch and the median inner learning-rate schedule. Shorter LR histories extend their last rate. No outer test data select settings, stopping, checkpoints or refit duration. The 100-epoch limit is shared; **actual stopping/checkpoint/refit epochs may differ**. A checkpoint/refit may occur before epoch 20. Thus the CNN baseline is validation-calibrated, rather than an untuned fixed-epoch model.
+Both stages then fit **fresh weights** on all outer training clips for the rounded-up median inner best epoch and the median inner learning-rate schedule. Shorter LR histories extend their last rate. No outer test data select settings, stopping, checkpoints or refit duration. The 50-epoch limit is shared; **actual stopping/checkpoint/refit epochs may differ**. A checkpoint/refit may occur before epoch 20. Thus the CNN baseline is validation-calibrated, rather than an untuned fixed-epoch model.
 
 Section 7 reports baseline inner checkpoint/refit epochs and stores its histories/bundles in `baseline_cnn_bundles`. Section 9 verifies shared settings/inner folds have not changed. Finished CNNs are stored on CPU and transferred for prediction as needed. **Rerun sections 7–10** when changing these shared settings. Earlier CNN baseline scores came from a different architecture/training definition and must not be reused.
 
@@ -266,7 +266,7 @@ Pandas displays full settings text and all columns. Training scores are resubsti
 3. Run **9.3–9.8**, then **10**. Re-running 9.2 clears previous tuning state, so re-run the remaining tuning/evaluation cells afterwards.
 4. Re-run **4–10** when changing basic/rich inputs. Within a run, every classical model retains all features from the selected preset and the outer test clips stay fixed.
 
-Model-parameter searches and full inner LOSO require substantial computation. There are 166 classical grid candidates and 24 PyTorch MLP candidates per outer training split in either preset (190 total). With five random outer folds × four inner folds and six LOSO outer folds × five inner holdouts, these require 9500 inner fits, plus 55 selected refits. The MLP contributes 1200 inner fits plus 11 selected refits; a full 160-candidate MLP grid would require 8000 inner fits. CNN tuning has 100 inner candidate runs across the 11 outer folds, each with up to 100 epochs, plus 11 selected refits. The predefined baseline adds 50 inner calibration runs and 11 fresh refits using the same protocol. CPU execution can be lengthy; GPU acceleration applies to CNN and tuned PyTorch MLP; baseline sklearn MLP stays on CPU. The notebook is saved without outputs; generate updated nested scores by executing it. Exploratory fixed-epoch CNN results are not hard-coded as final tuned results.
+Model-parameter searches and full inner LOSO require substantial computation. There are 166 classical grid candidates and 24 PyTorch MLP candidates per outer training split in either preset (190 total). With five random outer folds × four inner folds and six LOSO outer folds × five inner holdouts, these require 9500 inner fits, plus 55 selected refits. The MLP contributes 1200 inner fits plus 11 selected refits; a full 160-candidate MLP grid would require 8000 inner fits. CNN tuning has 100 inner candidate runs across the 11 outer folds, each with up to 50 epochs, plus 11 selected refits. The predefined baseline adds 50 inner calibration runs and 11 fresh refits using the same protocol. CPU execution can be lengthy; GPU acceleration applies to CNN and tuned PyTorch MLP; baseline sklearn MLP stays on CPU. The notebook is saved without outputs; generate updated nested scores by executing it. Exploratory fixed-epoch CNN results are not hard-coded as final tuned results.
 
 ### Further experiments
 
