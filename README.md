@@ -170,7 +170,7 @@ Every outer training split gets its own tuning run: **five random runs and six L
 
 Defaults, defined in section 7 and reused in 9.2, are `INNER_RANDOM_FOLDS = 4` and `INNER_LOSO_FOLDS = None`. The same inner folds are shared across models. Section 9.2 displays the validation plan and speaker coverage; with full inner LOSO, each AESDD speaker serves as validation in five eligible outer runs. Reducing the inner holdout count is possible but reduces speaker coverage.
 
-Select model settings by **mean inner-validation macro F1**, with accuracy retained alongside it. Each outer fold can select a different configuration. Feature-vector searches use `Pipeline(StandardScaler, model)` on raw X, retaining every feature from the selected preset. KNN, Logistic Regression, Random Forest and SVM use exhaustive grids. Baseline and tuned MLP use the same cloneable PyTorch estimator; tuning samples five Adam/ReLU configurations per architecture. Each inner fold fits its own scaler; the selected pipeline then refits on all outer training clips. CNN channel normalisation is also fitted only on the appropriate training images.
+Select model settings by **mean inner-validation macro F1**, with accuracy retained alongside it. Each outer fold can select a different configuration. Feature-vector searches use `Pipeline(StandardScaler, model)` on raw X, retaining every feature from the selected preset. KNN, Logistic Regression, Random Forest and SVM use exhaustive grids. Baseline and tuned MLP use the same cloneable PyTorch estimator; tuning samples two Adam/ReLU configurations per architecture. Each inner fold fits its own scaler; the selected pipeline then refits on all outer training clips. CNN channel normalisation is also fitted only on the appropriate training images.
 
 ### Inputs used during tuning
 
@@ -178,7 +178,7 @@ Keep `FEATURE_SET = 'basic'` or `'rich'` in section 4. Every classical model use
 
 ### Implemented searches
 
-Candidate counts are the same in basic and rich modes. Sklearn baseline constructors remain unchanged. The CNN baseline is a predefined, validation-calibrated 16/32-channel model, evaluated separately from the eight configurations of two larger tuning architectures.
+Candidate counts are the same in basic and rich modes. Sklearn baseline constructors remain unchanged. The CNN baseline is a predefined, validation-calibrated 16/32-channel model, evaluated separately from the four configurations of two larger tuning architectures.
 
 | Subsection | Model | Search and settings | Candidates per outer split |
 | --- | --- | --- | ---: |
@@ -186,8 +186,8 @@ Candidate counts are the same in basic and rich modes. Sklearn baseline construc
 | 9.4 | Logistic Regression | Grid: C=0.001/0.005/0.01/0.05/0.1/0.5/1/5/10/50/100/200, all at max_iter=1500 | 12 |
 | 9.5 | Random Forest | Grid: n_estimators=100/300 × max_depth=None × min_samples_leaf=1/2 × max_features=sqrt/0.5 | 8 |
 | 9.6 | SVM | Grid: 10 C values × 7 gamma values for RBF (70); 10 C values for linear | 80 |
-| 9.7 | PyTorch MLP | Adam/ReLU only: 5 sampled alpha/LR settings per architecture across four architectures | 20 |
-| 9.8 | CNN | Two-layer (32/64) or three-layer (32/64/128), both Dense 128 × initial LR=0.001/0.0003 × weight_decay=0.0001/0.001 | 8 |
+| 9.7 | PyTorch MLP | Adam/ReLU only: 2 sampled alpha/LR settings per architecture across five architectures | 10 |
+| 9.8 | CNN | Two-layer (32/64) or three-layer (32/64/128), both Dense 128 × augmentation off/on; fixed initial LR=0.001 and weight_decay=0.0001 | 4 |
 
 ### PyTorch MLP architecture and randomised search
 
@@ -197,14 +197,14 @@ The baseline uses scaled outer-training features; tuning fits a separate scaler 
 
 | Setting | Search space |
 | --- | --- |
-| Hidden layers | `(64,)`, `(128,)`, `(64, 32)`, `(128, 64)` |
+| Hidden layers | `(64,)`, `(128,)`, `(256,)`, `(64, 32)`, `(128, 64)` |
 | Activation | ReLU only |
 | Optimiser | Adam only |
-| L2 alpha | 0.0001, 0.001, 0.01, 0.1, 1.0 |
+| L2 alpha | 0.0001, 0.001, 0.01 |
 | Adam learning rate | 0.0003, 0.001 |
 | Training limit | 1500 Adam epochs |
 
-There are **40 possible configurations**: four architectures × five alpha values × two learning rates. `ParameterSampler` draws **5 distinct configurations per architecture**, without replacement using seed 42, for **20 candidates**. Sampling happens once; the same list is reused across every outer fold. Each architecture receives the same alpha/LR sample pattern, covering 50% of its ten combinations. Architecture coverage is guaranteed; individual alpha/LR values are not guaranteed coverage. Singleton parameter grids let the existing `GridSearchCV` runner evaluate only these sampled candidates with shared explicit CV, scoring, diagnostics and one selected refit. `MLP_SAMPLES_PER_ARCHITECTURE=5` controls the budget (valid range 1–10). The fixed `(100,)` baseline is evaluated separately and is not a tuning candidate. No extra reference candidate is added. All sampled configurations retain the shared 1500-iteration limit; tanh and L-BFGS are not searched.
+There are **30 possible configurations**: five architectures × three alpha values × two learning rates. `ParameterSampler` draws **2 distinct configurations per architecture**, without replacement, for **10 candidates**. A single random stream seeded at 42 advances between architectures; the resulting candidate list is reused across all outer folds. Each architecture receives an equal budget covering two of its six combinations; individual alpha/LR values are not guaranteed coverage. Singleton parameter grids let the existing `GridSearchCV` runner evaluate only these candidates with shared explicit CV, scoring, diagnostics and one selected refit. `MLP_SAMPLES_PER_ARCHITECTURE=2` controls the budget (valid range 1–6); `MLP_ALPHAS` and `MLP_LEARNING_RATES` expose the search values. The fixed `(100,)` baseline is evaluated separately and is not a tuning candidate. No extra reference candidate is added. All sampled configurations retain the shared 1500-iteration limit; tanh and L-BFGS are not searched.
 
 The explicit objective is **mean cross-entropy + alpha/(2 × N_train) × sum of squared weight matrices**. Biases are excluded and Adam weight_decay is zero. The alpha values therefore have a defined interpretation; copying them directly into weight_decay is avoided. This is a sklearn-inspired objective, not identical sklearn minibatch behaviour. Initialisation, optimisers and convergence behaviour also differ between frameworks.
 
@@ -216,15 +216,21 @@ Adam uses shuffled batches of min(200, N_train), and training-loss convergence w
 
 The section 7 **predefined CNN baseline** uses Conv 16/32 with BatchNorm and ReLU after each convolution, 2×2 max pooling after both convolutions, 4×4 adaptive average pooling, Flatten, Dense 64, ReLU, Dropout 0.4 and five output logits. Convolutions use 3×3 kernels, stride 1, padding 1 and bias=False before BatchNorm. Its fixed Adam settings are initial LR=0.001, weight_decay=0.0001 and batch size 32.
 
-The baseline and tuned CNNs share normalisation rules and a **50-epoch upper limit**, plus checkpointing, stopping and LR scheduling. The baseline fixes its architecture, initial LR and weight decay; tuning searches two larger architectures:
+The baseline and tuned CNNs share normalisation rules and a **50-epoch upper limit**, plus checkpointing, stopping and LR scheduling. The baseline remains unaugmented. Tuning compares two larger architectures, each with augmentation off/on:
 
-| Stage | Channels | Initial learning rates | Weight decays | BatchNorm | Hidden dense | Dropout |
-| --- | --- | --- | --- | --- | --- | --- |
-| Baseline: 2 convolutions | 16 → 32 | 0.001 | 0.0001 | After every convolution | 64 neurons + ReLU | 0.4 |
-| Tuning architecture 1: 2 convolutions | 32 → 64 | 0.001, 0.0003 | 0.0001, 0.001 | After every convolution | 128 neurons + ReLU | 0.4 |
-| Tuning architecture 2: 3 convolutions | 32 → 64 → 128 | 0.001, 0.0003 | 0.0001, 0.001 | After every convolution | 128 neurons + ReLU | 0.4 |
+| Stage | Channels | Hidden dense | Initial LR | Weight decay | Augmentation |
+| --- | --- | --- | --- | --- | --- |
+| Baseline | 16 → 32 | 64 neurons + ReLU | 0.001 | 0.0001 | Off |
+| Candidate 1 | 32 → 64 | 128 neurons + ReLU | 0.001 | 0.0001 | Off |
+| Candidate 2 | 32 → 64 | 128 neurons + ReLU | 0.001 | 0.0001 | On |
+| Candidate 3 | 32 → 64 → 128 | 128 neurons + ReLU | 0.001 | 0.0001 | Off |
+| Candidate 4 | 32 → 64 → 128 | 128 neurons + ReLU | 0.001 | 0.0001 | On |
 
-This gives **8 candidates**: 2 architectures × 2 initial learning rates × 2 weight decays. Every architecture has **two max-pooling layers**, after convolutions 1 and 2, and 4×4 adaptive pooling. The third convolution adds no further max pooling. All use Adam, batch size 32 and CUDA when available (CPU otherwise). The validation-based scheduler can reduce either initial LR during training. The baseline is evaluated separately and is not a tuning candidate. Both tuning architectures use 128 hidden dense units, but their convolution channels and dense input sizes differ, so this does not isolate the effect of depth alone.
+This gives **4 candidates**: 2 architectures × augmentation off/on. Initial LR and weight decay are fixed. Every convolution is followed by BatchNorm and ReLU; every network uses dropout 0.4, **two max-pooling layers** after convolutions 1 and 2, and 4×4 adaptive pooling. The third convolution adds no further max pooling. All use Adam, batch size 32 and CUDA when available (CPU otherwise). The validation-based scheduler can reduce LR during training. The baseline is evaluated separately and is not a tuning candidate. Both tuning architectures use 128 hidden dense units, but their convolution channels and dense input sizes differ, so this does not isolate depth alone.
+
+**Training-only spectrogram masking:** select each example independently with probability 0.5. Draw one frequency-mask width uniformly from 0–4 bins and one time-mask width from 0–8 frames, at random valid positions. Apply identical mask positions across all channels, including log-mel/delta/delta-delta in rich mode. Mask with zero after channel normalisation, representing the training-channel mean. Clone each batch to preserve cached images. A separate seeded CPU generator works with CPU/CUDA batches and avoids consuming model/dropout/shuffle random draws. Refresh masks during each inner training fit and selected outer refit. Validation, test and diagnostic metric inputs remain unaugmented. The unaugmented baseline and augmentation-off candidate paths do not draw augmentation randomness.
+
+The shared section 7 training helper now includes optional masking. **Rerun sections 7–10 after this update** to load the helper and refresh the matched baseline/tuning state.
 
 Shared settings are defined in **section 7**, then reused by section 9.2 and 9.8:
 
@@ -238,7 +244,7 @@ Shared settings are defined in **section 7**, then reused by section 9.2 and 9.8
 | `INNER_RANDOM_FOLDS` | 4 | Shared group-aware random validation folds |
 | `INNER_LOSO_FOLDS` | None | Validate on all remaining speakers |
 
-For the baseline and every tuning candidate, each inner fold fits channel normalisation **only on inner training images**, trains up to 50 epochs and restores a copied lowest-validation-loss checkpoint. Checkpoint improvement and LR scheduling use the same absolute threshold 0.0001. For the baseline, no architecture/initial LR/weight decay is searched: validation calibrates duration and the LR schedule only. In tuning, mean checkpoint macro F1 selects the configuration, with candidate order resolving ties.
+For the baseline and every tuning candidate, each inner fold fits channel normalisation **only on inner training images**, trains up to 50 epochs and restores a copied lowest-validation-loss checkpoint. Checkpoint improvement and LR scheduling use the same absolute threshold 0.0001. For the baseline, architecture, initial LR, weight decay and augmentation are fixed: validation calibrates duration and the LR schedule only. In tuning, mean checkpoint macro F1 selects the configuration, with candidate order resolving ties.
 
 Both stages then fit **fresh weights** on all outer training clips for the rounded-up median inner best epoch and the median inner learning-rate schedule. Shorter LR histories extend their last rate. No outer test data select settings, stopping, checkpoints or refit duration. The 50-epoch limit is shared; **actual stopping/checkpoint/refit epochs may differ**. A checkpoint/refit may occur before epoch 20. Thus the CNN baseline is validation-calibrated, rather than an untuned fixed-epoch model.
 
@@ -248,7 +254,7 @@ Section 7 reports baseline inner checkpoint/refit epochs and stores its historie
 
 - **Section 8/9.1:** baseline training/test accuracy and macro F1, averaged across outer folds, alongside pooled held-out scores.
 - **Each classical tuning section:** model-parameter candidates, complete settings, Top 10 & Bottom 10 candidates across all Random folds and separately across all LOSO folds, selected settings for every outer fold, and an inner-training versus validation macro F1 graph. Full candidate tables remain in `validation_results`. After defining the helper, these displays can be regenerated with `show_candidate_rankings(model_name, validation_results[model_name])`, without any new fitting.
-- **Candidate rankings for every tuned model:** independently display Top 10 and Bottom 10 by the unweighted mean inner-validation macro F1 across all Random outer folds, then across all LOSO outer folds. Include sample standard deviation across the outer-fold means, fold coverage and selected-fold count. This replaces the Random-fold-1 Top 15 table. These are inner-validation diagnostics, not pooled F1 or outer-test scores; selection rules are unchanged. Show fewer than ten when necessary (eight RF and eight CNN candidates); top/bottom lists can overlap when fewer than twenty candidates exist.
+- **Candidate rankings for every tuned model:** independently display Top 10 and Bottom 10 by the unweighted mean inner-validation macro F1 across all Random outer folds, then across all LOSO outer folds. Include sample standard deviation across the outer-fold means, fold coverage and selected-fold count. This replaces the Random-fold-1 Top 15 table. These are inner-validation diagnostics, not pooled F1 or outer-test scores; selection rules are unchanged. Show fewer than ten when necessary (eight RF and four CNN candidates); top/bottom lists can overlap when fewer than twenty candidates exist.
 - **CNN:** training/validation loss and macro F1, LR histories, selected checkpoint/refit epochs and F1 gaps. Curves use the first outer fold and first inner fold of each protocol, fixed independently of outer test performance. Inner training/validation losses and F1 are evaluated in evaluation mode; optimisation loss is retained separately.
 - **Combined selected settings:** a standalone cell immediately after CNN tuning displays `selected_settings` for every model/outer split and can be rerun without retraining.
 - **Section 10:** pooled baseline/tuned scores and changes, fold mean ± sample standard deviation, and separate per-speaker LOSO accuracy and macro F1 tables.
@@ -262,7 +268,7 @@ Pandas displays full settings text and all columns. Training scores are resubsti
 3. Run **9.3–9.8**, then **10**. Re-running 9.2 clears previous tuning state, so re-run the remaining tuning/evaluation cells afterwards.
 4. Re-run **4–10** when changing basic/rich inputs. Within a run, every classical model retains all features from the selected preset and the outer test clips stay fixed.
 
-Model-parameter searches and full inner LOSO require substantial computation. There are 120 classical grid candidates and 20 PyTorch MLP candidates per outer training split in either preset (140 total). With five random outer folds × four inner folds and six LOSO outer folds × five inner holdouts, these require 7000 inner fits, plus 55 selected refits. The MLP contributes 1000 inner fits plus 11 selected refits; a full 40-candidate MLP grid would require 2000 inner fits. CNN tuning has 400 inner candidate runs across the 11 outer folds, each with up to 50 epochs, plus 11 selected refits. The predefined baseline adds 50 inner calibration runs and 11 fresh refits using the same protocol. CPU execution can be lengthy; GPU acceleration applies to CNN and both baseline/tuned PyTorch MLP; the five sklearn baselines stay on CPU. The notebook is saved without outputs; generate updated nested scores by executing it. Exploratory fixed-epoch CNN results are not hard-coded as final tuned results.
+Model-parameter searches and full inner LOSO require substantial computation. There are 120 classical grid candidates and 10 PyTorch MLP candidates per outer training split in either preset (130 total). With five random outer folds × four inner folds and six LOSO outer folds × five inner holdouts, these require 6500 inner fits, plus 55 selected refits. The MLP contributes 500 inner fits plus 11 selected refits; a full 30-candidate MLP grid would require 1500 inner fits. CNN tuning has 200 inner candidate runs across the 11 outer folds, each with up to 50 epochs, plus 11 selected refits. The predefined baseline adds 50 inner calibration runs and 11 fresh refits using the same protocol. CPU execution can be lengthy; GPU acceleration applies to CNN and both baseline/tuned PyTorch MLP; the five sklearn baselines stay on CPU. The notebook is saved without outputs; generate updated nested scores by executing it. Exploratory fixed-epoch CNN results are not hard-coded as final tuned results.
 
 ## References
 
@@ -283,3 +289,4 @@ Model-parameter searches and full inner LOSO require substantial computation. Th
 - [Scikit-learn ParameterSampler](https://scikit-learn.org/stable/modules/generated/sklearn.model_selection.ParameterSampler.html)
 - [PyTorch L-BFGS](https://docs.pytorch.org/docs/stable/generated/torch.optim.LBFGS.html)
 - [PyTorch Adam](https://docs.pytorch.org/docs/stable/generated/torch.optim.Adam.html)
+
