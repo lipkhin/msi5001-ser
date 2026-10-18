@@ -56,11 +56,11 @@ Open [MSI5001_SER.ipynb](MSI5001_SER.ipynb) and run sections 1–10 in order:
 1. **Install dependency & import library** — prepare the Python environment.
 2. **Load dataset** — read a local WAV directory or ZIP, or download a local copy from a public Google Drive link without mounting Drive.
 3. **Explore and clean dataset** — remove byte-identical duplicates and skip damaged, empty, invalid, or silent WAVs; inspect tables and graphs; listen to one randomly selected recording per emotion.
-4. **Data preprocessing** — convert audio to mono, resample to 16 kHz, and choose basic (40 MFCC features + log-mel CNN input) or rich (120 acoustic features + log-mel/delta/delta-delta CNN input).
+4. **Data preprocessing** — convert audio to mono, resample to 16 kHz, trim quiet leading/trailing regions for every recording, and choose basic (40 MFCC features + log-mel CNN input) or rich (120 acoustic features + log-mel/delta/delta-delta CNN input).
 5. **Train test split (random & LOSO)** — prepare all five random CV folds and all six speaker-held-out LOSO folds.
 6. **Feature scaling** — fit scaling statistics separately on each split's training data and apply them to its training and test inputs.
 7. **Model training** — train fresh model instances for every split; define shared CNN/inner-split settings and calibrate the fixed two-layer CNN duration using only outer training data.
-8. **Model prediction and evaluation** — display pooled out-of-fold baseline accuracy/macro F1, fold statistics, training/test diagnostics and charts.
+8. **Model prediction and evaluation** — display pooled out-of-fold baseline accuracy/macro F1, fold statistics, per-speaker LOSO baseline accuracy, training/test diagnostics and charts.
 9. **Model Optimisation & Hyperparameter Tuning** — preserve baseline results, set up inner validation, and tune each model:
    - **9.1 Baseline results**
    - **9.2 Optimisation method**
@@ -71,6 +71,12 @@ Open [MSI5001_SER.ipynb](MSI5001_SER.ipynb) and run sections 1–10 in order:
    - **9.7 MLP optimisation**
    - **9.8 CNN optimisation**
 10. **Final model prediction and evaluation** — compare both stages on the same outer test recordings, including pooled score changes, fold mean ± standard deviation, per-speaker LOSO accuracy/macro F1 and charts.
+
+### Quiet-edge trimming
+
+Section 4 applies the same fixed preprocessing to every speaker in both basic and rich modes: mono conversion, resampling to 16 kHz, then `librosa.effects.trim(audio, top_db=30, frame_length=400, hop_length=160)`. The threshold is 30 dB below each recording's maximum frame RMS, using 25 ms frames with a 10 ms hop. Only leading/trailing quiet regions are removed; internal pauses remain. Both ML and CNN features are extracted from the retained audio. Empty trimmed audio raises an error so feature rows and labels cannot silently become misaligned.
+
+A table shows mean original/trimmed durations and leading/trailing amounts removed for each speaker. `metadata.duration_s` retains original file duration; `trimmed_duration_s`, `leading_trim_s` and `trailing_trim_s` describe the model input. Pause statistics use the trimmed audio duration. This per-recording rule does not learn statistics from other recordings. Re-run **sections 4–10** after changing trimming or feature settings; keep the outer folds and seeds fixed for before/after comparisons. Improved accuracy is not guaranteed.
 
 ### Input Features
 
@@ -154,6 +160,8 @@ Both protocols test **every recording exactly once**. Random CV has five outer f
 The primary comparison reports **pooled out-of-fold scores for both protocols**: combine the held-out predictions from all five random folds, or all six LOSO folds, then calculate accuracy and macro F1 once. Each recording has one prediction per model, protocol and stage. The notebook checks this coverage explicitly and retains recording indices to align baseline and optimised predictions.
 
 A second table reports the **unweighted mean ± sample standard deviation (`ddof=1`) of fold accuracy and macro F1**, using five random-fold values and six LOSO-fold values. Pooled macro F1 differs from mean fold macro F1; pooled accuracy also differs from the unweighted fold mean when fold sizes differ. Fold standard deviations describe variation across folds and are not confidence intervals. Macro F1 gives each emotion equal weight. Charts and improvement tables use pooled scores.
+
+Section 8 shows baseline LOSO accuracy separately for every held-out speaker, using the Model/Stage row layout from section 10. Section 10 shows both stages' per-speaker accuracy and macro F1. Class IDs for per-speaker F1 are generated explicitly from the encoder, and chart annotations use `bar_labels`, so rerunning the evaluation cell cannot replace class IDs with formatted bar text.
 
 ## Model Optimisation & Hyperparameter Tuning
 
@@ -289,4 +297,5 @@ Model-parameter searches and full inner LOSO require substantial computation. Th
 - [Scikit-learn ParameterSampler](https://scikit-learn.org/stable/modules/generated/sklearn.model_selection.ParameterSampler.html)
 - [PyTorch L-BFGS](https://docs.pytorch.org/docs/stable/generated/torch.optim.LBFGS.html)
 - [PyTorch Adam](https://docs.pytorch.org/docs/stable/generated/torch.optim.Adam.html)
+
 
