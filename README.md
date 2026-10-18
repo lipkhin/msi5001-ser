@@ -77,7 +77,7 @@ Open [MSI5001_SER.ipynb](MSI5001_SER.ipynb) and run sections 1–11 in order:
 
 Section 4 applies the same fixed preprocessing to every speaker in both basic and rich modes: mono conversion, resampling to 16 kHz, then `librosa.effects.trim(audio, top_db=30, frame_length=400, hop_length=160)`. The threshold is 30 dB below each recording's maximum frame RMS, using 25 ms frames with a 10 ms hop. Only leading/trailing quiet regions are removed; internal pauses remain. Both ML and CNN features are extracted from the retained audio. Empty trimmed audio raises an error so feature rows and labels cannot silently become misaligned.
 
-A table shows mean original/trimmed durations and leading/trailing amounts removed for each speaker. `metadata.duration_s` retains original file duration; `trimmed_duration_s`, `leading_trim_s` and `trailing_trim_s` describe the model input. Pause statistics use the trimmed audio duration. This per-recording rule does not learn statistics from other recordings. Re-run **sections 4–11** after changing trimming or feature settings; keep the outer folds and seeds fixed for before/after comparisons. Improved accuracy is not guaranteed.
+A table shows mean original/trimmed durations and leading/trailing amounts removed for each speaker. `metadata.duration_s` retains original file duration; `trimmed_duration_s`, `leading_trim_s` and `trailing_trim_s` describe the model input. Pause statistics use the trimmed audio duration. This per-recording rule does not learn statistics from other recordings. Re-run the section 1 configuration cell and **sections 4–11** after changing trimming or feature settings; keep the outer folds and seeds fixed for before/after comparisons. Improved accuracy is not guaranteed.
 
 ### Input Features
 
@@ -88,7 +88,7 @@ One selector controls both the acoustic feature vectors (including MLP) and CNN 
 | `'basic'` | **40 MFCC mean/std features** | **40 MFCC sequences + delta + delta-delta: 3 × 40 × 128** |
 | `'rich'` (default) | **120 acoustic features** | **Log-mel only: 1 × 64 × 128** |
 
-Select the mode in section 4:
+Select the preset in the dedicated **Run configuration** code cell after imports in section 1:
 
 ```python
 FEATURE_SET = 'rich'  # 'basic' or 'rich'
@@ -184,7 +184,7 @@ Select model settings by **mean inner-validation macro F1**, with accuracy retai
 
 ### Inputs used during tuning
 
-Keep `FEATURE_SET = 'basic'` or `'rich'` in section 4. Every classical model uses all **40 MFCC features** in basic mode or all **120 acoustic features** in rich mode, throughout baseline training and optimisation. The feature preset stays fixed across models and outer folds; there is no automatic feature-group selection. The same toggle sets CNN input to 40 MFCC sequences + delta + delta-delta in basic mode, or log-mel only in rich mode.
+Keep `FEATURE_SET = 'basic'` or `'rich'` in the section 1 configuration cell. Every classical model uses all **40 MFCC features** in basic mode or all **120 acoustic features** in rich mode, throughout baseline training and optimisation. The feature preset stays fixed across models and outer folds; there is no automatic feature-group selection. The same toggle sets CNN input to 40 MFCC sequences + delta + delta-delta in basic mode, or log-mel only in rich mode.
 
 ### Implemented searches
 
@@ -276,22 +276,23 @@ Pandas displays full settings text and all columns. Training scores are resubsti
 1. Run sections 1–8 for the selected basic/rich preset. Retain the original baseline for learning-progress comparisons.
 2. Review shared CNN/inner-fold settings in **7**, and search compute settings in **9.2**. `TUNING_JOBS = 2` runs up to two classical candidate/fold fits concurrently. RF keeps its own n_jobs=1; reduce the shared job count if CPU/RAM capacity is limited. Tuned PyTorch MLP always uses one fitting job; MLP and CNN select CPU/CUDA separately.
 3. Run **9.3–9.8**, then **10**. Re-running 9.2 clears previous tuning state, so re-run the remaining tuning/evaluation cells afterwards.
-4. Re-run **4–11** when changing basic/rich inputs. Within a run, every classical model retains all features from the selected preset and the outer test clips stay fixed.
+4. Re-run the section 1 configuration cell and **4–11** when changing basic/rich inputs. Within a run, every classical model retains all features from the selected preset and the outer test clips stay fixed.
 
 Model-parameter searches and full inner LOSO require substantial computation. There are 120 classical grid candidates and 10 PyTorch MLP candidates per outer training split in either preset (130 total). With five random outer folds × four inner folds and six LOSO outer folds × five inner holdouts, these require 6500 inner fits, plus 55 selected refits. The MLP contributes 500 inner fits plus 11 selected refits; a full 30-candidate MLP grid would require 1500 inner fits. CNN tuning has 200 inner candidate runs across the 11 outer folds, each with up to 50 epochs, plus 11 selected refits. The predefined baseline adds 50 inner calibration runs and 11 fresh refits using the same protocol. CPU execution can be lengthy; GPU acceleration applies to CNN and both baseline/tuned PyTorch MLP; the five sklearn baselines stay on CPU. The notebook is saved without outputs; generate updated nested scores by executing it. Exploratory fixed-epoch CNN results are not hard-coded as final tuned results.
 
 ## Save models and reproduce results
 
-Set these controls in section 1:
+Set both the feature preset and these run controls in the dedicated configuration code cell after imports in section 1:
 
 ```python
+FEATURE_SET = 'rich'        # 'basic' or 'rich'
 RUN_MODE = 'train'          # 'train' or 'load'
 SAVE_MODELS = True
 MODEL_ROOT = Path('./saved_models')
 MODEL_RUN = 'latest'        # Or the folder name of a specific completed run
 ```
 
-**Train/save:** choose `FEATURE_SET` in section 4 and run sections 1–11. Section 7 saves baseline outer-fold models after baseline training completes; section 9 saves each selected refit. Section 11 writes the evaluation state, reloads every model from disk and recomputes its held-out predictions. It checks exact predicted-label agreement and identical pooled accuracy/macro F1 before marking the run complete and updating `latest.json`. This is a prediction round-trip check, not a comparison of cached score tables.
+**Train/save:** choose `FEATURE_SET` in the section 1 configuration cell and run sections 1–11. Section 7 saves baseline outer-fold models after baseline training completes; section 9 saves each selected refit. Section 11 writes the evaluation state, reloads every model from disk and recomputes its held-out predictions. It checks exact predicted-label agreement and identical pooled accuracy/macro F1 before marking the run complete and updating `latest.json`. This is a prediction round-trip check, not a comparison of cached score tables.
 
 **Load/reproduce:** retain the original dataset and the complete `saved_models` folder beside the notebook. Set `RUN_MODE='load'`, select the matching `FEATURE_SET`, and run all sections. Dataset loading, cleaning and feature extraction still run; model fitting and hyperparameter searches are skipped. Sections 8 and 10 regenerate baseline/final tables and charts from loaded models. Section 9 displays the saved validation results, settings and CNN curves. Section 11 checks all regenerated predictions against the saved reference predictions. `SAVE_MODELS` is ignored in load mode.
 
