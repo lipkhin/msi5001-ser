@@ -24,7 +24,7 @@ A key objective is to examine how well the models generalise to different speake
 3. Create or select a Python environment and choose it as the notebook kernel.
 4. Install the dependencies using the optional cell in section 1, then restart the kernel after upgrades if required. If the environment is already configured, skip that cell. For NVIDIA GPU execution, install a compatible CUDA-enabled PyTorch build using the [official PyTorch installer](https://pytorch.org/get-started/locally/).
 5. Set `SOURCE = 'local'` and point `LOCAL_PATH` to your AESDD directory or ZIP. The default path is `./AESDD` relative to the notebook's working directory.
-6. Run all sections in order.
+6. Set `RUN_MODE='train'` to train/save, or `RUN_MODE='load'` to reproduce an existing completed archive, then run sections 1–11 in order.
 
 ### Google Colab
 
@@ -45,18 +45,18 @@ Drive downloads are copied to the runtime's local storage. Local CPU execution i
 | Random Forest | Ensemble of decision trees |
 | Support Vector Machine (SVM) | Nonlinear classifier using the default RBF kernel |
 | Multilayer Perceptron (MLP) | Artificial neural network |
-| Convolutional Neural Network (CNN) | Neural network trained on log-mel inputs, with temporal derivatives in rich mode |
+| Convolutional Neural Network (CNN) | Neural network using MFCC sequences + delta + delta-delta in basic mode, or log-mel only in rich mode |
 
-Sections 1–8 establish a **predefined baseline using audio features**. The five sklearn models use default settings; MLP uses a fixed PyTorch configuration, and CNN uses a fixed architecture with training duration calibrated by inner validation. Section 9 implements validation-based hyperparameter tuning; section 10 compares baseline and optimised predictions. The five scikit-learn classifiers retain their default constructor settings. Baseline MLP uses the same PyTorch estimator as tuning: one 100-unit hidden layer, ReLU, Adam, alpha=0.0001, LR=0.001 and a shared 1500-iteration upper limit with training-loss stopping. The predefined CNN uses two convolution layers (16/32 channels), BatchNorm, Dense 64, dropout 0.4, Adam LR=0.001 and weight_decay=0.0001, batch size 32, and the same 50-epoch maximum/checkpoint/stopping rules as tuned CNNs. CUDA is selected automatically for CNN and both baseline/tuned PyTorch MLP when available. The five scikit-learn baseline models run on CPU. Finished PyTorch MLP models and predictions use CPU.
+Sections 1–8 establish a **predefined baseline using audio features**. The five sklearn models use default settings; MLP uses a fixed PyTorch configuration, and CNN uses a fixed architecture with training duration calibrated by inner validation. Section 9 implements validation-based hyperparameter tuning; section 10 compares baseline and optimised predictions; section 11 verifies model saving/loading. The five scikit-learn classifiers retain their default constructor settings. Baseline MLP uses the same PyTorch estimator as tuning: one 100-unit hidden layer, ReLU, Adam, alpha=0.0001, LR=0.001 and a shared 1500-iteration upper limit with training-loss stopping. The predefined CNN uses two convolution layers (16/32 channels), BatchNorm, Dense 64, dropout 0.4, Adam LR=0.001 and weight_decay=0.0001, batch size 32, and the same 50-epoch maximum/checkpoint/stopping rules as tuned CNNs. CUDA is selected automatically for CNN and both baseline/tuned PyTorch MLP when available. The five scikit-learn baseline models run on CPU. Finished PyTorch MLP models and predictions use CPU.
 
 ## Notebook Workflow
 
-Open [MSI5001_SER.ipynb](MSI5001_SER.ipynb) and run sections 1–10 in order:
+Open [MSI5001_SER.ipynb](MSI5001_SER.ipynb) and run sections 1–11 in order:
 
 1. **Install dependency & import library** — prepare the Python environment.
 2. **Load dataset** — read a local WAV directory or ZIP, or download a local copy from a public Google Drive link without mounting Drive.
 3. **Explore and clean dataset** — remove byte-identical duplicates and skip damaged, empty, invalid, or silent WAVs; inspect tables and graphs; listen to one randomly selected recording per emotion.
-4. **Data preprocessing** — convert audio to mono, resample to 16 kHz, trim quiet leading/trailing regions for every recording, and choose basic (40 MFCC features + log-mel CNN input) or rich (120 acoustic features + log-mel/delta/delta-delta CNN input).
+4. **Data preprocessing** — convert audio to mono, resample to 16 kHz, trim quiet leading/trailing regions for every recording, and choose basic (40 MFCC summary features + 40 MFCC sequences/delta/delta-delta CNN input) or rich (120 acoustic features + log-mel-only CNN input).
 5. **Train test split (random & LOSO)** — prepare all five random CV folds and all six speaker-held-out LOSO folds.
 6. **Feature scaling** — fit scaling statistics separately on each split's training data and apply them to its training and test inputs.
 7. **Model training** — train fresh model instances for every split; define shared CNN/inner-split settings and calibrate the fixed two-layer CNN duration using only outer training data.
@@ -71,12 +71,13 @@ Open [MSI5001_SER.ipynb](MSI5001_SER.ipynb) and run sections 1–10 in order:
    - **9.7 MLP optimisation**
    - **9.8 CNN optimisation**
 10. **Final model prediction and evaluation** — compare both stages on the same outer test recordings, including pooled score changes, fold mean ± standard deviation, per-speaker LOSO accuracy/macro F1 and charts.
+11. **Save models and reproduce results** — reload selected fold models, regenerate held-out predictions and verify that they match the saved run.
 
 ### Quiet-edge trimming
 
 Section 4 applies the same fixed preprocessing to every speaker in both basic and rich modes: mono conversion, resampling to 16 kHz, then `librosa.effects.trim(audio, top_db=30, frame_length=400, hop_length=160)`. The threshold is 30 dB below each recording's maximum frame RMS, using 25 ms frames with a 10 ms hop. Only leading/trailing quiet regions are removed; internal pauses remain. Both ML and CNN features are extracted from the retained audio. Empty trimmed audio raises an error so feature rows and labels cannot silently become misaligned.
 
-A table shows mean original/trimmed durations and leading/trailing amounts removed for each speaker. `metadata.duration_s` retains original file duration; `trimmed_duration_s`, `leading_trim_s` and `trailing_trim_s` describe the model input. Pause statistics use the trimmed audio duration. This per-recording rule does not learn statistics from other recordings. Re-run **sections 4–10** after changing trimming or feature settings; keep the outer folds and seeds fixed for before/after comparisons. Improved accuracy is not guaranteed.
+A table shows mean original/trimmed durations and leading/trailing amounts removed for each speaker. `metadata.duration_s` retains original file duration; `trimmed_duration_s`, `leading_trim_s` and `trailing_trim_s` describe the model input. Pause statistics use the trimmed audio duration. This per-recording rule does not learn statistics from other recordings. Re-run **sections 4–11** after changing trimming or feature settings; keep the outer folds and seeds fixed for before/after comparisons. Improved accuracy is not guaranteed.
 
 ### Input Features
 
@@ -84,8 +85,8 @@ One selector controls both the acoustic feature vectors (including MLP) and CNN 
 
 | `FEATURE_SET` | Feature-vector models (including MLP) | CNN input per recording |
 | --- | --- | --- |
-| `'basic'` | **40 MFCC mean/std features** | **Log-mel only: 1 × 64 × 128** |
-| `'rich'` (default) | **120 acoustic features** | **Log-mel + delta + delta-delta: 3 × 64 × 128** |
+| `'basic'` | **40 MFCC mean/std features** | **40 MFCC sequences + delta + delta-delta: 3 × 40 × 128** |
+| `'rich'` (default) | **120 acoustic features** | **Log-mel only: 1 × 64 × 128** |
 
 Select the mode in section 4:
 
@@ -138,15 +139,16 @@ Chroma extraction uses `tuning=0.0`: a fixed A440 reference that bypasses the au
 
 | Channel | Included in | What it captures |
 | --- | --- | --- |
-| Log-mel | Basic and rich | Energy across 64 mel-frequency bands over time |
-| Delta of log-mel | Rich | First-order changes across neighbouring time frames |
-| Delta-delta of log-mel | Rich | Second-order changes across neighbouring time frames |
+| 40 MFCC coefficients per frame | Basic | Cepstral representation of spectral shape over time |
+| Delta MFCC | Basic | First-order temporal changes in those coefficients |
+| Delta-delta MFCC | Basic | Second-order temporal changes in those coefficients |
+| Log-mel | Rich | Energy across 64 mel-frequency bands over time |
 
-Extract log-mel at 16 kHz using the existing mel-spectrogram settings. In rich mode, compute first- and second-order temporal derivatives with `librosa.feature.delta`, a 9-frame window, `axis=-1` and nearest-edge padding. Compute derivatives on the original log-mel frames **before** resizing the stacked channels together to 64 × 128. Channel order is log-mel, delta, delta-delta. These derivatives are distinct from the delta MFCC summaries used by the classical models; CNN does not receive an MFCC sequence.
+The **CNN basic input is a sequence**, not the 40-value summary vector used by classical ML. Compute a 64-band log-mel spectrum at 16 kHz, then retain 40 MFCC coefficients using DCT type 2 and orthonormal scaling. Compute first/second temporal derivatives on the original MFCC frames with `librosa.feature.delta`, a 9-frame window, `axis=-1` and nearest-edge padding. Stack MFCC, delta and delta-delta, retaining all 40 coefficient rows and resizing only time to 128 bins: **3 × 40 × 128**.
 
-Section 4 displays the selected input shapes and plots every CNN channel. Both baseline and tuned CNNs infer the number of input channels automatically. Fit one mean and standard deviation **per channel**, across training recordings, mel bands and time bins. Apply those statistics to the corresponding validation/test inputs; clip zero standard deviations to `1e-8`. Inner validation fits its own training-channel statistics, and the selected CNN's final refit stores statistics from all outer training images.
+The **CNN rich input is log-mel only**, with 64 mel bands and time resized to 128 bins: **1 × 64 × 128**. Both presets use `n_fft=2048`, `hop_length=512`, a Hann window, power=2 and dB conversion with ref=1, amin=1e-10 and top_db=80. The basic/rich names select presets; they do not imply a guaranteed CNN performance ranking. These CNN changes do not alter the classical 40/120-feature definitions.
 
-Re-run sections **4–10** after changing `FEATURE_SET`, so features, scaling, models and results match the selection. Rich adds an explicit view of temporal changes; it is not guaranteed to improve accuracy. Comparing basic and rich changes the inputs for both model families, so it measures the complete feature preset rather than isolating hyperparameter tuning. Baseline-versus-optimised comparisons within one mode use the same complete feature preset and outer folds.
+Section 4 displays the selected input shapes and plots every CNN channel. Both baseline and tuned CNNs infer the input channel count automatically. Fit one mean and standard deviation **per channel**, across training recordings, coefficient/frequency rows and time bins. Apply those statistics to the corresponding validation/test inputs; clip zero standard deviations to `1e-8`. Inner validation fits its own training-channel statistics, and the selected CNN's final refit stores statistics from all outer training images.
 
 ## Evaluation
 
@@ -182,7 +184,7 @@ Select model settings by **mean inner-validation macro F1**, with accuracy retai
 
 ### Inputs used during tuning
 
-Keep `FEATURE_SET = 'basic'` or `'rich'` in section 4. Every classical model uses all **40 MFCC features** in basic mode or all **120 acoustic features** in rich mode, throughout baseline training and optimisation. The feature preset stays fixed across models and outer folds; there is no automatic feature-group selection. The same toggle continues to set the CNN input to log-mel only or log-mel + delta + delta-delta.
+Keep `FEATURE_SET = 'basic'` or `'rich'` in section 4. Every classical model uses all **40 MFCC features** in basic mode or all **120 acoustic features** in rich mode, throughout baseline training and optimisation. The feature preset stays fixed across models and outer folds; there is no automatic feature-group selection. The same toggle sets CNN input to 40 MFCC sequences + delta + delta-delta in basic mode, or log-mel only in rich mode.
 
 ### Implemented searches
 
@@ -236,9 +238,9 @@ The baseline and tuned CNNs share normalisation rules and a **50-epoch upper lim
 
 This gives **4 candidates**: 2 architectures × augmentation off/on. Initial LR and weight decay are fixed. Every convolution is followed by BatchNorm and ReLU; every network uses dropout 0.4, **two max-pooling layers** after convolutions 1 and 2, and 4×4 adaptive pooling. The third convolution adds no further max pooling. All use Adam, batch size 32 and CUDA when available (CPU otherwise). The validation-based scheduler can reduce LR during training. The baseline is evaluated separately and is not a tuning candidate. Both tuning architectures use 128 hidden dense units, but their convolution channels and dense input sizes differ, so this does not isolate depth alone.
 
-**Training-only spectrogram masking:** select each example independently with probability 0.5. Draw one frequency-mask width uniformly from 0–4 bins and one time-mask width from 0–8 frames, at random valid positions. Apply identical mask positions across all channels, including log-mel/delta/delta-delta in rich mode. Mask with zero after channel normalisation, representing the training-channel mean. Clone each batch to preserve cached images. A separate seeded CPU generator works with CPU/CUDA batches and avoids consuming model/dropout/shuffle random draws. Refresh masks during each inner training fit and selected outer refit. Validation, test and diagnostic metric inputs remain unaugmented. The unaugmented baseline and augmentation-off candidate paths do not draw augmentation randomness.
+**Training-only spectrogram masking:** select each example independently with probability 0.5. Draw one frequency-mask width uniformly from 0–4 bins and one time-mask width from 0–8 frames, at random valid positions. Apply identical mask positions across the MFCC/delta/delta-delta channels in basic mode; rich mode has one log-mel channel. The row mask operates on coefficient rows for MFCC and frequency rows for log-mel. Mask with zero after channel normalisation, representing the training-channel mean. Clone each batch to preserve cached images. A separate seeded CPU generator works with CPU/CUDA batches and avoids consuming model/dropout/shuffle random draws. Refresh masks during each inner training fit and selected outer refit. Validation, test and diagnostic metric inputs remain unaugmented. The unaugmented baseline and augmentation-off candidate paths do not draw augmentation randomness.
 
-The shared section 7 training helper now includes optional masking. **Rerun sections 7–10 after this update** to load the helper and refresh the matched baseline/tuning state.
+The shared section 7 training helper now includes optional masking. **Rerun sections 4–11 after changing CNN inputs** to load the helper and refresh the matched baseline/tuning state.
 
 Shared settings are defined in **section 7**, then reused by section 9.2 and 9.8:
 
@@ -256,7 +258,7 @@ For the baseline and every tuning candidate, each inner fold fits channel normal
 
 Both stages then fit **fresh weights** on all outer training clips for the rounded-up median inner best epoch and the median inner learning-rate schedule. Shorter LR histories extend their last rate. No outer test data select settings, stopping, checkpoints or refit duration. The 50-epoch limit is shared; **actual stopping/checkpoint/refit epochs may differ**. A checkpoint/refit may occur before epoch 20. Thus the CNN baseline is validation-calibrated, rather than an untuned fixed-epoch model.
 
-Section 7 reports baseline inner checkpoint/refit epochs and stores its histories/bundles in `baseline_cnn_bundles`. Section 9 verifies shared settings/inner folds have not changed. Finished CNNs are stored on CPU and transferred for prediction as needed. **Rerun sections 7–10** when changing these shared settings.
+Section 7 reports baseline inner checkpoint/refit epochs and stores its histories/bundles in `baseline_cnn_bundles`. Section 9 verifies shared settings/inner folds have not changed. Finished CNNs are stored on CPU and transferred for prediction as needed. **Rerun sections 7–11** when changing these shared settings.
 
 ### Diagnostics and result display
 
@@ -274,15 +276,49 @@ Pandas displays full settings text and all columns. Training scores are resubsti
 1. Run sections 1–8 for the selected basic/rich preset. Retain the original baseline for learning-progress comparisons.
 2. Review shared CNN/inner-fold settings in **7**, and search compute settings in **9.2**. `TUNING_JOBS = 2` runs up to two classical candidate/fold fits concurrently. RF keeps its own n_jobs=1; reduce the shared job count if CPU/RAM capacity is limited. Tuned PyTorch MLP always uses one fitting job; MLP and CNN select CPU/CUDA separately.
 3. Run **9.3–9.8**, then **10**. Re-running 9.2 clears previous tuning state, so re-run the remaining tuning/evaluation cells afterwards.
-4. Re-run **4–10** when changing basic/rich inputs. Within a run, every classical model retains all features from the selected preset and the outer test clips stay fixed.
+4. Re-run **4–11** when changing basic/rich inputs. Within a run, every classical model retains all features from the selected preset and the outer test clips stay fixed.
 
 Model-parameter searches and full inner LOSO require substantial computation. There are 120 classical grid candidates and 10 PyTorch MLP candidates per outer training split in either preset (130 total). With five random outer folds × four inner folds and six LOSO outer folds × five inner holdouts, these require 6500 inner fits, plus 55 selected refits. The MLP contributes 500 inner fits plus 11 selected refits; a full 30-candidate MLP grid would require 1500 inner fits. CNN tuning has 200 inner candidate runs across the 11 outer folds, each with up to 50 epochs, plus 11 selected refits. The predefined baseline adds 50 inner calibration runs and 11 fresh refits using the same protocol. CPU execution can be lengthy; GPU acceleration applies to CNN and both baseline/tuned PyTorch MLP; the five sklearn baselines stay on CPU. The notebook is saved without outputs; generate updated nested scores by executing it. Exploratory fixed-epoch CNN results are not hard-coded as final tuned results.
+
+## Save models and reproduce results
+
+Set these controls in section 1:
+
+```python
+RUN_MODE = 'train'          # 'train' or 'load'
+SAVE_MODELS = True
+MODEL_ROOT = Path('./saved_models')
+MODEL_RUN = 'latest'        # Or the folder name of a specific completed run
+```
+
+**Train/save:** choose `FEATURE_SET` in section 4 and run sections 1–11. Section 7 saves baseline outer-fold models after baseline training completes; section 9 saves each selected refit. Section 11 writes the evaluation state, reloads every model from disk and recomputes its held-out predictions. It checks exact predicted-label agreement and identical pooled accuracy/macro F1 before marking the run complete and updating `latest.json`. This is a prediction round-trip check, not a comparison of cached score tables.
+
+**Load/reproduce:** retain the original dataset and the complete `saved_models` folder beside the notebook. Set `RUN_MODE='load'`, select the matching `FEATURE_SET`, and run all sections. Dataset loading, cleaning and feature extraction still run; model fitting and hyperparameter searches are skipped. Sections 8 and 10 regenerate baseline/final tables and charts from loaded models. Section 9 displays the saved validation results, settings and CNN curves. Section 11 checks all regenerated predictions against the saved reference predictions. `SAVE_MODELS` is ignored in load mode.
+
+In Colab, download and retain the complete saved_models folder before resetting or losing the runtime.
+
+Each train/save run gets a new folder under `saved_models/basic/<run>/` or `saved_models/rich/<run>/`. Earlier completed runs remain available. Save one complete run for each preset you report. Incomplete folders are not eligible for load mode; `latest.json` points only to a successfully verified run. Saving must be enabled before training; switching it on only at section 11 cannot recover checkpoints that were not exported.
+
+| Saved file | Contents |
+| --- | --- |
+| sklearn `.joblib` files | Fitted outer-fold classifiers/pipelines, including training-fitted scaling |
+| MLP `.pt` and scaler `.joblib` files | CPU model weights, architecture/settings, class mapping and fitted scaler; no pickled notebook-defined MLP class |
+| CNN `.pt` and bundle `.joblib` files | CPU model weights, architecture, normalisation, selected settings and available training history |
+| `evaluation_state.joblib` | Recording identities, class order, exact outer indices, reference predictions, selected settings and validation histories |
+| `manifest.json` | Input/preprocessing configuration, package versions, model count and SHA-256 file checksums |
+
+For AESDD, a completed run contains **154 selected model entries**: 7 models × 11 outer folds × 2 stages. DummyClassifier is included at both stages without tuning. Inner-search candidate weights are not saved. Baseline scalers are retained from section 6. Model weights load onto CPU and the existing CNN inference helper uses the available device; CUDA training is not required for loading.
+
+Only load your own trusted archives because joblib deserialises Python objects. Load mode checks dataset bytes, labels/order, feature definitions, class mapping and outer splits. The dataset may move to a different Windows/Colab path. Package differences are reported, and prediction verification detects result changes. Retain the recorded versions to reproduce the submitted run. Old checkpoints from earlier CNN input definitions are incompatible with these new presets; train a new run.
+
+Section 11 lists saved file sizes and identifies individual files above **10 MB** for Google Drive plus `links.txt`. It does not upload files or generate the remaining submission documents. The code saves weights when you execute training; this repository update does not include newly trained production weights or new accuracy claims.
 
 ## References
 
 - [Librosa audio feature extraction](https://librosa.org/doc/latest/feature.html)
 - [Librosa spectral feature definitions](https://librosa.org/doc/main/_modules/librosa/feature/spectral.html)
 - [Librosa chroma STFT](https://librosa.org/doc/main/api/generated/librosa.feature.chroma_stft.html)
+- [Librosa MFCC extraction](https://librosa.org/doc/0.11.0/generated/librosa.feature.mfcc.html)
 - [Librosa delta feature definition](https://librosa.org/doc/main/_modules/librosa/feature/utils.html)
 - [Banse & Scherer (1996), Acoustic profiles in vocal emotion expression](https://doi.org/10.1037/0022-3514.70.3.614) — background for broad vocal-emotion tendencies, not evidence of the specific AESDD feature relationships proposed here.
 - [Scikit-learn model selection](https://scikit-learn.org/stable/model_selection.html)
@@ -297,5 +333,3 @@ Model-parameter searches and full inner LOSO require substantial computation. Th
 - [Scikit-learn ParameterSampler](https://scikit-learn.org/stable/modules/generated/sklearn.model_selection.ParameterSampler.html)
 - [PyTorch L-BFGS](https://docs.pytorch.org/docs/stable/generated/torch.optim.LBFGS.html)
 - [PyTorch Adam](https://docs.pytorch.org/docs/stable/generated/torch.optim.Adam.html)
-
-
